@@ -283,6 +283,9 @@ namespace PocketMC.Desktop.Services
 
         private void OnProcessExited(object? sender, EventArgs e)
         {
+            try { _playitProcess?.Kill(entireProcessTree: true); } catch { }
+            try { _playitProcess?.Dispose(); _playitProcess = null; } catch { }
+
             int exitCode = _process?.ExitCode ?? -1;
 
             if (!_intentionalStop && exitCode != 0)

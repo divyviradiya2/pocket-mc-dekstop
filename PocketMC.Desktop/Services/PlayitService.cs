@@ -44,24 +44,80 @@ namespace PocketMC.Desktop.Services
                 var process = Process.Start(psi);
                 if (process == null) return "https://playit.gg/login";
 
-                // Playit claim runs and usually prints a URL to stdout/stderr. 
-                var outputTask = process.StandardOutput.ReadToEndAsync();
-                var errorTask = process.StandardError.ReadToEndAsync();
+                string claimUrl = "https://playit.gg/login";
                 
-                await Task.WhenAny(Task.Delay(5000), Task.WhenAll(outputTask, errorTask));
+                // Use a cancellation token to stop waiting after 10 seconds
+                using var cts = new CancellationTokenSource(10000);
                 
-                string content = (outputTask.IsCompleted ? outputTask.Result : "") + 
-                                 (errorTask.IsCompleted ? errorTask.Result : "");
-
-                var match = Regex.Match(content, @"https:/\/playit\.gg\/claim\/[a-zA-Z0-9\-]+");
-                if (match.Success)
+                // Read line by line to get the URL quickly without waiting for exit
+                while (!process.StandardOutput.EndOfStream)
                 {
-                    return match.Value;
+                    if (cts.IsCancellationRequested) break;
+                    
+                    var lineTask = process.StandardOutput.ReadLineAsync();
+                    if (await Task.WhenAny(lineTask, Task.Delay(500, cts.Token)) == lineTask && lineTask.Result != null)
+                    {
+                        var match = Regex.Match(lineTask.Result, @"https:/\/playit\.gg\/claim\/[a-zA-Z0-9\-]+");
+                        if (match.Success)
+                        {
+                            claimUrl = match.Value;
+                            break; // Got the URL, leave the process running in the background to finish the handshake
+                        }
+                    }
                 }
+
+                return claimUrl;
             }
             catch {}
 
             return "https://playit.gg/login";
+        }
+
+        public async Task<string?> TryExtractSecretAsync(string appRootPath)
+        {
+            string playitExePath = Path.Combine(appRootPath, "runtime", "playit", "playit.exe");
+            if (!File.Exists(playitExePath)) return null;
+
+            var psi = new ProcessStartInfo
+            {
+                FileName = playitExePath,
+                Arguments = "secret-path",
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                CreateNoWindow = true,
+                StandardOutputEncoding = Encoding.UTF8
+            };
+
+            try
+            {
+                var process = Process.Start(psi);
+                if (process != null)
+                {
+                    string pathOutput = await process.StandardOutput.ReadToEndAsync();
+                    
+                    // Regex to find potential paths, stripping ansi color codes if any
+                    string cleanPath = Regex.Replace(pathOutput, @"\e\[[0-9;]*m", "").Trim();
+                    
+                    // Look for the TOML file line specifically if it outputs multiple lines
+                    foreach (var line in cleanPath.Split('\n'))
+                    {
+                        string path = line.Trim();
+                        if (File.Exists(path))
+                        {
+                            string content = File.ReadAllText(path);
+                            // Either TOML format
+                            var match = Regex.Match(content, @"secret_key\s*=\s*""([^""]+)""");
+                            if (match.Success) return match.Groups[1].Value;
+                            
+                            // Or raw string
+                            if (content.Length > 20 && !content.Contains("=")) return content.Trim();
+                        }
+                    }
+                }
+            }
+            catch {}
+
+            return null;
         }
 
         public async Task<string> GetPublicAddressForPortAsync(int localPort)

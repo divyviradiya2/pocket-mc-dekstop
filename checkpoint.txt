@@ -1,0 +1,11 @@
+╔══════════════════════════════════════════════════════════════╗
+║  CHECKPOINT: Verification Required                           ║
+╚══════════════════════════════════════════════════════════════╝
+
+**Test 3: Dashboard Address Display**
+
+After starting a server with Playit tunneling enabled, the Dashboard displays a copying-enabled 'Address: <addr>' string under the server's status badge. Clicking it copies the IP to the clipboard and shows a 'Copied' prompt.
+
+──────────────────────────────────────────────────────────────
+Type `pass` or describe what's wrong.
+──────────────────────────────────────────────────────────────

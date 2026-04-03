@@ -897,9 +897,10 @@ namespace PocketMC.Desktop.Views
                     UseShellExecute = true
                 });
 
-                TxtPlayitLoginStatus.Text = "Browser opened... Playit interactive setup has begun. If playit.exe provided a secret token, paste it below:";
+                TxtPlayitLoginStatus.Text = "Browser opened. Please securely log in to Playit via the browser. Once finished, click 'Verify Authentication'.";
                 
-                TxtPlayitSecretInput.Visibility = Visibility.Visible;
+                // Hide input, show verify button
+                BtnSavePlayitSecret.Content = "Verify Authentication";
                 BtnSavePlayitSecret.Visibility = Visibility.Visible;
             }
             catch (Exception ex)
@@ -909,9 +910,14 @@ namespace PocketMC.Desktop.Views
             }
         }
 
-        private void BtnSavePlayitSecret_Click(object sender, RoutedEventArgs e)
+        private async void BtnSavePlayitSecret_Click(object sender, RoutedEventArgs e)
         {
-            string secret = TxtPlayitSecretInput.Text.Trim();
+            BtnSavePlayitSecret.IsEnabled = false;
+            TxtPlayitLoginStatus.Text = "Verifying link...";
+            
+            var playit = new PlayitService(new SettingsManager());
+            string? secret = await playit.TryExtractSecretAsync(_appRoot);
+            
             if (!string.IsNullOrEmpty(secret))
             {
                 var settingsManager = new SettingsManager();
@@ -920,6 +926,11 @@ namespace PocketMC.Desktop.Views
                 settingsManager.Save(settings);
                 
                 LoadNetworkingTab();
+            }
+            else
+            {
+                TxtPlayitLoginStatus.Text = "Not linked yet. Please complete the process in your browser, then try again.";
+                BtnSavePlayitSecret.IsEnabled = true;
             }
         }
 
