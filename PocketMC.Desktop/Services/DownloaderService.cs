@@ -88,16 +88,5 @@ namespace PocketMC.Desktop.Services
                 }
             });
         }
-
-        public async Task DownloadPlayitCliAsync(string appRootPath, IProgress<DownloadProgress>? progress = null)
-        {
-            string playitExePath = Path.Combine(appRootPath, "runtime", "playit", "playit.exe");
-            if (File.Exists(playitExePath)) return; // Already downloaded
-
-            // Use the official Windows AMD64 release URL for Playit CLI
-            string playitUrl = "https://github.com/playit-cloud/playit-agent/releases/latest/download/playit-windows-x86_64.exe";
-            
-            await DownloadFileAsync(playitUrl, playitExePath, progress);
-        }
     }
 }

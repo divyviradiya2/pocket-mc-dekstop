@@ -30,7 +30,6 @@ namespace PocketMC.Desktop.Services
     public class ServerProcess : IDisposable
     {
         private Process? _process;
-        private Process? _playitProcess;
         private readonly JobObject _jobObject;
         private bool _disposed;
         private bool _intentionalStop;
@@ -132,56 +131,6 @@ namespace PocketMC.Desktop.Services
             // Start background readers
             Task.Run(() => ReadStreamAsync(_process.StandardOutput, false));
             Task.Run(() => ReadStreamAsync(_process.StandardError, true));
-
-            if (meta.EnablePlayit)
-            {
-                string playitExePath = Path.Combine(appRootPath, "runtime", "playit", "playit.exe");
-                var settings = new SettingsManager().Load();
-                if (File.Exists(playitExePath) && !string.IsNullOrEmpty(settings.PlayitSecretKey))
-                {
-                    string playitSecretFile = Path.Combine(workingDir, "playit_secret.txt");
-                    File.WriteAllText(playitSecretFile, settings.PlayitSecretKey);
-
-                    var playitPsi = new ProcessStartInfo
-                    {
-                        FileName = playitExePath,
-                        Arguments = $"start --secret_path \"{playitSecretFile}\"",
-                        WorkingDirectory = workingDir,
-                        UseShellExecute = false,
-                        RedirectStandardOutput = true,
-                        RedirectStandardError = true,
-                        CreateNoWindow = true,
-                        StandardOutputEncoding = Encoding.UTF8
-                    };
-
-                    _playitProcess = new Process { StartInfo = playitPsi, EnableRaisingEvents = true };
-                    _playitProcess.Start();
-
-                    try { _jobObject.AddProcess(_playitProcess.Handle); } catch { }
-
-                    string logPath = Path.Combine(workingDir, "logs", "playit.log");
-                    Directory.CreateDirectory(Path.Combine(workingDir, "logs"));
-                    
-                    Task.Run(async () => {
-                        try {
-                            using var reader = _playitProcess.StandardOutput;
-                            using var writer = new StreamWriter(logPath, append: true);
-                            string? line;
-                            while ((line = await reader.ReadLineAsync()) != null)
-                                await writer.WriteLineAsync(line);
-                        } catch { }
-                    });
-                    Task.Run(async () => {
-                        try {
-                            using var reader = _playitProcess.StandardError;
-                            using var writer = new StreamWriter(logPath, append: true);
-                            string? line;
-                            while ((line = await reader.ReadLineAsync()) != null)
-                                await writer.WriteLineAsync($"[ERR] {line}");
-                        } catch { }
-                    });
-                }
-            }
         }
 
         public async Task WriteInputAsync(string command)
@@ -214,8 +163,6 @@ namespace PocketMC.Desktop.Services
                 try { _process.Kill(entireProcessTree: true); } catch { }
             }
 
-            try { _playitProcess?.Kill(entireProcessTree: true); } catch { }
-
             SetState(ServerState.Stopped);
         }
 
@@ -225,7 +172,6 @@ namespace PocketMC.Desktop.Services
             {
                 _intentionalStop = true;
                 try { _process.Kill(entireProcessTree: true); } catch { }
-                try { _playitProcess?.Kill(entireProcessTree: true); } catch { }
                 SetState(ServerState.Stopped);
             }
         }
@@ -283,9 +229,6 @@ namespace PocketMC.Desktop.Services
 
         private void OnProcessExited(object? sender, EventArgs e)
         {
-            try { _playitProcess?.Kill(entireProcessTree: true); } catch { }
-            try { _playitProcess?.Dispose(); _playitProcess = null; } catch { }
-
             int exitCode = _process?.ExitCode ?? -1;
 
             if (!_intentionalStop && exitCode != 0)
@@ -341,7 +284,6 @@ namespace PocketMC.Desktop.Services
                 _disposed = true;
                 Kill();
                 _process?.Dispose();
-                _playitProcess?.Dispose();
             }
         }
     }
