@@ -2,11 +2,17 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace PocketMC.Desktop.Services
 {
     public static class ServerPropertiesParser
     {
+        private static readonly Regex InlineCommentRegex = new(
+            @"(?<value>.*?)(?<comment>\s+#.*)?$",
+            RegexOptions.Compiled,
+            TimeSpan.FromSeconds(1));
+
         public static Dictionary<string, string> Read(string filePath)
         {
             var properties = new Dictionary<string, string>();
@@ -26,7 +32,7 @@ namespace PocketMC.Desktop.Services
                 if (separatorIndex > 0)
                 {
                     var key = trimmed.Substring(0, separatorIndex).Trim();
-                    var value = trimmed.Substring(separatorIndex + 1).Trim();
+                    var value = StripInlineComment(trimmed.Substring(separatorIndex + 1)).Trim();
                     properties[key] = value;
                 }
             }
@@ -61,8 +67,13 @@ namespace PocketMC.Desktop.Services
                     var key = trimmed.Substring(0, separatorIndex).Trim();
                     if (properties.TryGetValue(key, out var newValue))
                     {
-                        newLines.Add($"{key}={newValue}");
+                        string inlineComment = ExtractInlineComment(line);
+                        newLines.Add($"{key}={newValue}{inlineComment}");
                         keysUpdated.Add(key);
+                    }
+                    else
+                    {
+                        newLines.Add(line);
                     }
                 }
                 else
@@ -81,6 +92,25 @@ namespace PocketMC.Desktop.Services
             }
 
             File.WriteAllLines(filePath, newLines, new UTF8Encoding(false)); // Write without BOM
+        }
+
+        private static string StripInlineComment(string value)
+        {
+            var match = InlineCommentRegex.Match(value);
+            return match.Success ? match.Groups["value"].Value : value;
+        }
+
+        private static string ExtractInlineComment(string line)
+        {
+            int separatorIndex = line.IndexOf('=');
+            if (separatorIndex < 0 || separatorIndex == line.Length - 1)
+            {
+                return string.Empty;
+            }
+
+            string valuePortion = line.Substring(separatorIndex + 1);
+            var match = InlineCommentRegex.Match(valuePortion);
+            return match.Success ? match.Groups["comment"].Value : string.Empty;
         }
     }
 }

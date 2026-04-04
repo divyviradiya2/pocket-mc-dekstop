@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
+using PocketMC.Desktop.Utils;
 
 namespace PocketMC.Desktop.Services
 {
@@ -30,11 +31,13 @@ namespace PocketMC.Desktop.Services
     {
         private static readonly Regex ClaimUrlRegex = new(
             @"(Visit link to setup |Approve program at )(?<url>https://playit\.gg/claim/[A-Za-z0-9\-]+)",
-            RegexOptions.Compiled);
+            RegexOptions.Compiled,
+            TimeSpan.FromSeconds(1));
 
         private static readonly Regex TunnelRunningRegex = new(
             @"tunnel running",
-            RegexOptions.Compiled | RegexOptions.IgnoreCase);
+            RegexOptions.Compiled | RegexOptions.IgnoreCase,
+            TimeSpan.FromSeconds(1));
 
         private Process? _agentProcess;
         private readonly JobObject _jobObject;
@@ -188,7 +191,8 @@ namespace PocketMC.Desktop.Services
                 string? line;
                 while ((line = await reader.ReadLineAsync()) != null)
                 {
-                    Log("STDOUT: " + line);
+                    string safeLine = LogSanitizer.SanitizePlayitLine(line);
+                    Log("STDOUT: " + safeLine);
 
                     // Auto-reset when playit has an invalid token.
                     // Playit uses crossterm bypassing stdin, so piping 'Y' doesn't work.
@@ -228,7 +232,7 @@ namespace PocketMC.Desktop.Services
                         _claimUrlAlreadyFired = true;
                         string url = claimMatch.Groups["url"].Value;
                         SetState(PlayitAgentState.WaitingForClaim);
-                        Log("INFO: Claim URL detected: " + url);
+                        Log("INFO: Claim URL detected and forwarded to the setup flow.");
                         OnClaimUrlReceived?.Invoke(this, url);
                     }
 
@@ -241,8 +245,14 @@ namespace PocketMC.Desktop.Services
                     }
                 }
             }
-            catch (ObjectDisposedException) { }
-            catch (InvalidOperationException) { }
+            catch (ObjectDisposedException)
+            {
+                _logger.LogDebug("Playit stdout reader stopped because the process was disposed.");
+            }
+            catch (InvalidOperationException ex)
+            {
+                _logger.LogDebug(ex, "Playit stdout reader stopped because the process changed state.");
+            }
         }
 
         private async Task ReadErrorAsync(StreamReader reader)
@@ -252,11 +262,17 @@ namespace PocketMC.Desktop.Services
                 string? line;
                 while ((line = await reader.ReadLineAsync()) != null)
                 {
-                    Log("STDERR: " + line);
+                    Log("STDERR: " + LogSanitizer.SanitizePlayitLine(line));
                 }
             }
-            catch (ObjectDisposedException) { }
-            catch (InvalidOperationException) { }
+            catch (ObjectDisposedException)
+            {
+                _logger.LogDebug("Playit stderr reader stopped because the process was disposed.");
+            }
+            catch (InvalidOperationException ex)
+            {
+                _logger.LogDebug(ex, "Playit stderr reader stopped because the process changed state.");
+            }
         }
 
         private void OnProcessExited(object? sender, EventArgs e)
@@ -299,7 +315,7 @@ namespace PocketMC.Desktop.Services
 
         private void Log(string message)
         {
-            string timestamped = $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}] {message}";
+            string timestamped = $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}] {LogSanitizer.SanitizeConsoleLine(message)}";
             try
             {
                 _logWriter?.WriteLine(timestamped);

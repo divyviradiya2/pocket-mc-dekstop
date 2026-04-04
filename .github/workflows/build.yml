@@ -28,13 +28,16 @@ jobs:
     - name: Build Configuration Release
       run: dotnet build PocketMC.Desktop.sln --configuration Release --no-restore
 
+    - name: Run Tests
+      run: dotnet test PocketMC.Desktop.sln --configuration Release --no-build
+
     - name: Publish App
       run: dotnet publish PocketMC.Desktop\PocketMC.Desktop.csproj -c Release -r win-x64 -p:PublishSingleFile=true -p:PublishReadyToRun=true --self-contained false -o publish_output
       
     - name: Create Installer using Inno Setup
-      run: |
-        "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss
-      shell: cmd
+      uses: Minionguyjpro/Inno-Setup-Action@v1.2.2
+      with:
+        path: installer.iss
 
     - name: Upload Setup.exe Artifact
       uses: actions/upload-artifact@v4

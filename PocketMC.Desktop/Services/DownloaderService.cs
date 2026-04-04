@@ -1,8 +1,8 @@
 using System;
 using System.IO;
-using System.IO.Compression;
 using System.Net.Http;
 using System.Threading.Tasks;
+using PocketMC.Desktop.Utils;
 
 namespace PocketMC.Desktop.Services
 {
@@ -69,42 +69,17 @@ namespace PocketMC.Desktop.Services
 
         public Task ExtractZipAsync(string zipPath, string extractPath, IProgress<DownloadProgress>? progress = null)
         {
-            return Task.Run(() =>
-            {
-                Directory.CreateDirectory(extractPath);
-                
-                // For reporting progress, we need to read the entry count
-                using var archive = ZipFile.OpenRead(zipPath);
-                long totalEntries = archive.Entries.Count;
-                long entriesExtracted = 0;
-
-                foreach (var entry in archive.Entries)
+            return SafeZipExtractor.ExtractAsync(
+                zipPath,
+                extractPath,
+                (entriesExtracted, totalEntries) =>
                 {
-                    // Full path of extracted entry
-                    string destinationPath = Path.GetFullPath(Path.Combine(extractPath, entry.FullName));
-                    
-                    // Security check against ZipSlip vulnerability
-                    if (!destinationPath.StartsWith(Path.GetFullPath(extractPath), StringComparison.OrdinalIgnoreCase))
-                        continue;
-
-                    if (entry.FullName.EndsWith("/") || entry.FullName.EndsWith("\\"))
-                    {
-                        Directory.CreateDirectory(destinationPath);
-                    }
-                    else
-                    {
-                        Directory.CreateDirectory(Path.GetDirectoryName(destinationPath)!);
-                        entry.ExtractToFile(destinationPath, overwrite: true);
-                    }
-
-                    entriesExtracted++;
                     progress?.Report(new DownloadProgress
                     {
                         BytesRead = entriesExtracted,
                         TotalBytes = totalEntries
                     });
-                }
-            });
+                });
         }
     }
 }

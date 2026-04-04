@@ -11,13 +11,17 @@ namespace PocketMC.Desktop.Services
     /// </summary>
     public static class PluginScanner
     {
+        private static readonly TimeSpan RegexTimeout = TimeSpan.FromSeconds(1);
+
         private static readonly Regex ApiVersionRegex = new(
             @"api-version:\s*['""]?([^\s'""]+)['""]?",
-            RegexOptions.Compiled);
+            RegexOptions.Compiled,
+            RegexTimeout);
 
         private static readonly Regex PluginNameRegex = new(
             @"^name:\s*['""]?([^\s'""]+)['""]?",
-            RegexOptions.Compiled | RegexOptions.Multiline);
+            RegexOptions.Compiled | RegexOptions.Multiline,
+            RegexTimeout);
 
         /// <summary>
         /// Attempts to read the api-version from plugin.yml inside a JAR file.
@@ -27,17 +31,20 @@ namespace PocketMC.Desktop.Services
         {
             try
             {
-                using var archive = ZipFile.OpenRead(jarPath);
-                var entry = archive.GetEntry("plugin.yml");
-                if (entry == null) return null;
-
-                using var reader = new StreamReader(entry.Open());
-                string yaml = reader.ReadToEnd();
-
+                string? yaml = ReadPluginYaml(jarPath);
+                if (yaml == null) return null;
                 var match = ApiVersionRegex.Match(yaml);
                 return match.Success ? match.Groups[1].Value : null;
             }
-            catch
+            catch (IOException)
+            {
+                return null;
+            }
+            catch (InvalidDataException)
+            {
+                return null;
+            }
+            catch (UnauthorizedAccessException)
             {
                 return null;
             }
@@ -50,17 +57,20 @@ namespace PocketMC.Desktop.Services
         {
             try
             {
-                using var archive = ZipFile.OpenRead(jarPath);
-                var entry = archive.GetEntry("plugin.yml");
-                if (entry == null) return null;
-
-                using var reader = new StreamReader(entry.Open());
-                string yaml = reader.ReadToEnd();
-
+                string? yaml = ReadPluginYaml(jarPath);
+                if (yaml == null) return null;
                 var match = PluginNameRegex.Match(yaml);
                 return match.Success ? match.Groups[1].Value : null;
             }
-            catch
+            catch (IOException)
+            {
+                return null;
+            }
+            catch (InvalidDataException)
+            {
+                return null;
+            }
+            catch (UnauthorizedAccessException)
             {
                 return null;
             }
@@ -93,7 +103,11 @@ namespace PocketMC.Desktop.Services
                 return pluginVer.Value.major > serverVer.Value.major ||
                        (pluginVer.Value.major == serverVer.Value.major && pluginVer.Value.minor > serverVer.Value.minor);
             }
-            catch
+            catch (FormatException)
+            {
+                return false;
+            }
+            catch (OverflowException)
             {
                 return false;
             }
@@ -114,6 +128,19 @@ namespace PocketMC.Desktop.Services
                 return (major, minor);
 
             return null;
+        }
+
+        private static string? ReadPluginYaml(string jarPath)
+        {
+            using var archive = ZipFile.OpenRead(jarPath);
+            var entry = archive.GetEntry("plugin.yml");
+            if (entry == null)
+            {
+                return null;
+            }
+
+            using var reader = new StreamReader(entry.Open());
+            return reader.ReadToEnd();
         }
     }
 }

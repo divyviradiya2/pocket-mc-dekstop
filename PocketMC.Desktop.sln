@@ -5,6 +5,8 @@ VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PocketMC.Desktop", "PocketMC.Desktop\PocketMC.Desktop.csproj", "{D091A72A-EBD1-465F-8B60-AF9EEF077940}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PocketMC.Desktop.Tests", "PocketMC.Desktop.Tests\PocketMC.Desktop.Tests.csproj", "{5CBD3F2E-AD91-4EE4-A0BD-71C02108653F}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -18,5 +20,9 @@ Global
 		{D091A72A-EBD1-465F-8B60-AF9EEF077940}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{D091A72A-EBD1-465F-8B60-AF9EEF077940}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{D091A72A-EBD1-465F-8B60-AF9EEF077940}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5CBD3F2E-AD91-4EE4-A0BD-71C02108653F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5CBD3F2E-AD91-4EE4-A0BD-71C02108653F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5CBD3F2E-AD91-4EE4-A0BD-71C02108653F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5CBD3F2E-AD91-4EE4-A0BD-71C02108653F}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

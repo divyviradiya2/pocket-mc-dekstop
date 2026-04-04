@@ -46,11 +46,10 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     {
         Application.Current.Dispatcher.Invoke(() =>
         {
-            double commitedMb = _globalMonitor.GetTotalCommittedRamMb();
-            double totalMb = PocketMC.Desktop.Utils.SystemMetrics.GetTotalPhysicalMemoryMb();
-            GlobalHealthTextBlock.Text = $"Global RAM: {Math.Round(commitedMb)} MB / {Math.Round(totalMb)} MB";
+            GlobalResourceSummary summary = _globalMonitor.CurrentSummary;
+            GlobalHealthTextBlock.Text = summary.DisplayText;
 
-            if (totalMb > 0 && commitedMb > totalMb * 0.9)
+            if (summary.IsHighUsage)
                 GlobalHealthTextBlock.Foreground = System.Windows.Media.Brushes.Red;
             else
                 GlobalHealthTextBlock.Foreground = (System.Windows.Media.Brush)FindResource("TextFillColorSecondaryBrush");

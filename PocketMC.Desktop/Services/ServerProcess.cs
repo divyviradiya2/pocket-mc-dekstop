@@ -9,6 +9,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using PocketMC.Desktop.Models;
+using PocketMC.Desktop.Utils;
 
 namespace PocketMC.Desktop.Services
 {
@@ -32,7 +33,13 @@ namespace PocketMC.Desktop.Services
     {
         private static readonly Regex PlayerCountRegex = new(
             @"There are (\d+) of a max",
-            RegexOptions.Compiled);
+            RegexOptions.Compiled,
+            TimeSpan.FromSeconds(1));
+
+        private static readonly Regex AdvancedJvmArgTokenRegex = new(
+            "\"[^\"]*\"|\\S+",
+            RegexOptions.Compiled,
+            TimeSpan.FromSeconds(1));
 
         private Process? _process;
         private readonly JobObject _jobObject;
@@ -230,13 +237,15 @@ namespace PocketMC.Desktop.Services
                 string? line;
                 while ((line = await reader.ReadLineAsync()) != null)
                 {
-                    OutputBuffer.Enqueue(line);
+                    string sanitizedLine = LogSanitizer.SanitizeConsoleLine(line);
+
+                    OutputBuffer.Enqueue(sanitizedLine);
                     if (OutputBuffer.Count > MAX_BUFFER_LINES)
                         OutputBuffer.TryDequeue(out _);
 
                     try
                     {
-                        _sessionLogWriter?.WriteLine(line);
+                        _sessionLogWriter?.WriteLine(sanitizedLine);
                     }
                     catch (Exception ex)
                     {
@@ -244,26 +253,26 @@ namespace PocketMC.Desktop.Services
                     }
 
                     if (isError)
-                        OnErrorLine?.Invoke(line);
+                        OnErrorLine?.Invoke(sanitizedLine);
                     else
                     {
-                        OnOutputLine?.Invoke(line);
+                        OnOutputLine?.Invoke(sanitizedLine);
 
                         // State Transition
-                        if (State == ServerState.Starting && line.Contains("Done ("))
+                        if (State == ServerState.Starting && sanitizedLine.Contains("Done ("))
                             SetState(ServerState.Online);
                             
                         // Player Tracking
-                        if (line.Contains(" joined the game"))
+                        if (sanitizedLine.Contains(" joined the game"))
                             PlayerCount++;
-                        else if (line.Contains(" left the game"))
+                        else if (sanitizedLine.Contains(" left the game"))
                         {
                             PlayerCount--;
                             if (PlayerCount < 0) PlayerCount = 0;
                         }
-                        else if (line.Contains("players online:"))
+                        else if (sanitizedLine.Contains("players online:"))
                         {
-                            var match = PlayerCountRegex.Match(line);
+                            var match = PlayerCountRegex.Match(sanitizedLine);
                             if (match.Success && int.TryParse(match.Groups[1].Value, out int count))
                             {
                                 PlayerCount = count;
@@ -273,7 +282,7 @@ namespace PocketMC.Desktop.Services
                         // Check output waiters (used by BackupService for save-all sync)
                         foreach (var kvp in _outputWaiters)
                         {
-                            if (kvp.Value.IsMatch(line))
+                            if (kvp.Value.IsMatch(sanitizedLine))
                             {
                                 _outputWaiters.TryRemove(kvp.Key, out _);
                                 kvp.Key.TrySetResult(true);
@@ -360,7 +369,7 @@ namespace PocketMC.Desktop.Services
                 yield break;
             }
 
-            foreach (Match match in Regex.Matches(advancedJvmArgs, "\"[^\"]*\"|\\S+"))
+            foreach (Match match in AdvancedJvmArgTokenRegex.Matches(advancedJvmArgs))
             {
                 var token = match.Value.Trim();
                 if (string.IsNullOrWhiteSpace(token))

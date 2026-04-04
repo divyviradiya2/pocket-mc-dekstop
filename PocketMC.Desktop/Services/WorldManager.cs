@@ -1,8 +1,8 @@
 using System;
 using System.IO;
-using System.IO.Compression;
 using System.Linq;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
 using PocketMC.Desktop.Utils;
 
 namespace PocketMC.Desktop.Services
@@ -13,6 +13,13 @@ namespace PocketMC.Desktop.Services
     /// </summary>
     public class WorldManager
     {
+        private readonly ILogger<WorldManager> _logger;
+
+        public WorldManager(ILogger<WorldManager> logger)
+        {
+            _logger = logger;
+        }
+
         /// <summary>
         /// Extracts a world ZIP to the target path, intelligently finding the real world root.
         /// </summary>
@@ -23,7 +30,7 @@ namespace PocketMC.Desktop.Services
             try
             {
                 onProgress?.Invoke("Extracting ZIP...");
-                await Task.Run(() => ZipFile.ExtractToDirectory(zipPath, tempDir));
+                await SafeZipExtractor.ExtractAsync(zipPath, tempDir);
 
                 onProgress?.Invoke("Scanning for level.dat...");
                 string? worldRoot = await Task.Run(() => FindWorldRoot(tempDir));
@@ -52,8 +59,14 @@ namespace PocketMC.Desktop.Services
                 // Always clean up temp directory
                 if (Directory.Exists(tempDir))
                 {
-                    try { Directory.Delete(tempDir, true); }
-                    catch { /* best effort cleanup */ }
+                    try
+                    {
+                        Directory.Delete(tempDir, true);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogDebug(ex, "Failed to clean up temporary world extraction directory {TempDir}.", tempDir);
+                    }
                 }
             }
         }
