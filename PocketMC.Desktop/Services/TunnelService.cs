@@ -53,8 +53,9 @@ namespace PocketMC.Desktop.Services
         /// </summary>
         public async Task<TunnelResolutionResult> ResolveTunnelAsync(int serverPort)
         {
-            // Check if agent is online
-            if (_agentService.State != PlayitAgentState.Connected)
+            // Check if agent is online or actively starting up
+            if (_agentService.State != PlayitAgentState.Connected && 
+                _agentService.State != PlayitAgentState.Starting)
             {
                 return new TunnelResolutionResult
                 {
