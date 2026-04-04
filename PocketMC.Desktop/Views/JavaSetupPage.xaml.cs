@@ -81,6 +81,8 @@ namespace PocketMC.Desktop.Views
 
             if (!anyMissing)
             {
+                // Still ensure playit.exe is downloaded even when JREs are present (NET-01)
+                await EnsurePlayitReadyAsync();
                 NavigationService.Navigate(new DashboardPage(_appRootPath));
                 return;
             }
@@ -94,6 +96,10 @@ namespace PocketMC.Desktop.Views
                     await AcquireJreAsync(task);
                 }
                 
+                // Download playit.exe alongside JREs (NET-01)
+                TxtGlobalStatus.Text = "Downloading Playit.gg agent...";
+                await EnsurePlayitReadyAsync();
+
                 TxtGlobalStatus.Text = "All runtimes configured successfully!";
                 await Task.Delay(1000);
                 NavigationService.Navigate(new DashboardPage(_appRootPath));
@@ -172,6 +178,24 @@ namespace PocketMC.Desktop.Views
             task.StatusColor = Brushes.LimeGreen;
             task.ProgressValue = 100;
             task.ProgressText = "Installed";
+        }
+
+        /// <summary>
+        /// Downloads playit.exe if not already present (NET-01).
+        /// Non-fatal: if download fails, the app continues (tunneling is optional).
+        /// </summary>
+        private async Task EnsurePlayitReadyAsync()
+        {
+            try
+            {
+                var downloader = new DownloaderService();
+                await downloader.EnsurePlayitDownloadedAsync(_appRootPath);
+            }
+            catch (Exception ex)
+            {
+                // Playit download failure is non-fatal — server management still works
+                System.Diagnostics.Debug.WriteLine($"Playit download failed (non-fatal): {ex.Message}");
+            }
         }
     }
 }
