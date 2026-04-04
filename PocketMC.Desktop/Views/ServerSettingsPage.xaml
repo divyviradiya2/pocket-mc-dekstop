@@ -104,6 +104,19 @@
                                     <Button x:Name="BtnBrowseJava" Grid.Column="1" Content="..." Click="BtnBrowseJava_Click" Margin="5,0,0,0" Width="35" Padding="5" Cursor="Hand"/>
                                 </Grid>
                                 <TextBlock Text="Note: Leave blank to use PocketMC's automatic internal Java versioning." FontSize="11" Foreground="Gray" Margin="0,5,0,12"/>
+
+                                <TextBlock Text="Advanced JVM Arguments:" Foreground="Silver" Margin="0,5,0,5"/>
+                                <TextBox x:Name="TxtAdvancedJvmArgs"
+                                         Background="#3E3E42"
+                                         Foreground="White"
+                                         Padding="5"
+                                         AcceptsReturn="True"
+                                         TextWrapping="Wrap"
+                                         MinHeight="64"/>
+                                <TextBlock Text="One flag per token, for example: -XX:+UseG1GC -XX:MaxGCPauseMillis=200"
+                                           FontSize="11"
+                                           Foreground="Gray"
+                                           Margin="0,5,0,0"/>
                             </StackPanel>
                         </Expander>
 

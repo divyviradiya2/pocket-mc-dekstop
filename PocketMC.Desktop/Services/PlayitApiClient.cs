@@ -6,6 +6,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
 
 namespace PocketMC.Desktop.Services
 {
@@ -102,6 +103,7 @@ namespace PocketMC.Desktop.Services
         public List<TunnelData> Tunnels { get; set; } = new();
         public string? ErrorMessage { get; set; }
         public bool IsTokenInvalid { get; set; }
+        public bool RequiresClaim { get; set; }
     }
 
     /// <summary>
@@ -112,14 +114,24 @@ namespace PocketMC.Desktop.Services
     public class PlayitApiClient
     {
         private readonly HttpClient _httpClient;
+        private readonly ApplicationState _applicationState;
+        private readonly SettingsManager _settingsManager;
+        private readonly ILogger<PlayitApiClient> _logger;
         private static readonly Regex SecretRegex = new(
             @"secret_key\s*=\s*""([^""]+)""",
             RegexOptions.Compiled);
 
         private const string TunnelApiUrl = "https://api.playit.gg/tunnels/list";
 
-        public PlayitApiClient(HttpClient? httpClient = null)
+        public PlayitApiClient(
+            ApplicationState applicationState,
+            SettingsManager settingsManager,
+            ILogger<PlayitApiClient> logger,
+            HttpClient? httpClient = null)
         {
+            _applicationState = applicationState;
+            _settingsManager = settingsManager;
+            _logger = logger;
             _httpClient = httpClient ?? new HttpClient();
             // App needs a user agent and specific headers
             _httpClient.DefaultRequestHeaders.Add("User-Agent", "PocketMC-Desktop");
@@ -132,8 +144,7 @@ namespace PocketMC.Desktop.Services
         /// </summary>
         public string? GetSecretKey()
         {
-            string appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-            string tomlPath = Path.Combine(appData, "playit_gg", "playit.toml");
+            var tomlPath = _settingsManager.GetPlayitTomlPath(_applicationState.Settings);
 
             if (!File.Exists(tomlPath))
                 return null;
@@ -144,8 +155,9 @@ namespace PocketMC.Desktop.Services
                 var match = SecretRegex.Match(content);
                 return match.Success ? match.Groups[1].Value : null;
             }
-            catch
+            catch (Exception ex)
             {
+                _logger.LogWarning(ex, "Failed to read playit secret from {TomlPath}.", tomlPath);
                 return null;
             }
         }
@@ -162,8 +174,8 @@ namespace PocketMC.Desktop.Services
                 return new TunnelListResult
                 {
                     Success = false,
-                    ErrorMessage = "No agent secret key found. Agent may not be claimed yet.",
-                    IsTokenInvalid = true
+                    ErrorMessage = "No Playit agent secret is available yet. Complete account approval to finish setup.",
+                    RequiresClaim = true
                 };
             }
 

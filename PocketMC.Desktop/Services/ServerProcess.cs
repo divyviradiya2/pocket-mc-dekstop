@@ -7,8 +7,8 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
 using PocketMC.Desktop.Models;
-using PocketMC.Desktop.Utils;
 
 namespace PocketMC.Desktop.Services
 {
@@ -30,8 +30,13 @@ namespace PocketMC.Desktop.Services
     /// </summary>
     public class ServerProcess : IDisposable
     {
+        private static readonly Regex PlayerCountRegex = new(
+            @"There are (\d+) of a max",
+            RegexOptions.Compiled);
+
         private Process? _process;
         private readonly JobObject _jobObject;
+        private readonly ILogger<ServerProcess> _logger;
         private bool _disposed;
         private bool _intentionalStop;
         private readonly ConcurrentDictionary<TaskCompletionSource<bool>, Regex> _outputWaiters = new();
@@ -54,10 +59,11 @@ namespace PocketMC.Desktop.Services
 
         public Process? GetInternalProcess() => _process;
 
-        public ServerProcess(Guid instanceId, JobObject jobObject)
+        public ServerProcess(Guid instanceId, JobObject jobObject, ILogger<ServerProcess> logger)
         {
             InstanceId = instanceId;
             _jobObject = jobObject;
+            _logger = logger;
         }
 
         public void Start(InstanceMetadata meta, string appRootPath)
@@ -100,7 +106,10 @@ namespace PocketMC.Desktop.Services
                 var stream = new FileStream(sessionLogPath, FileMode.Create, FileAccess.Write, FileShare.ReadWrite);
                 _sessionLogWriter = new StreamWriter(stream, Encoding.UTF8) { AutoFlush = true };
             }
-            catch { /* Best effort logging */ }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to initialize the session log for instance {InstanceId}.", InstanceId);
+            }
 
             string serverJar = Path.Combine(workingDir, "server.jar");
             if (!File.Exists(serverJar))
@@ -112,10 +121,11 @@ namespace PocketMC.Desktop.Services
 
 
 
+            var minRamMb = Math.Max(128, meta.MinRamMb);
+            var maxRamMb = Math.Max(minRamMb, meta.MaxRamMb);
             var psi = new ProcessStartInfo
             {
                 FileName = javaPath,
-                Arguments = $"-Xms{meta.MinRamMb}M -Xmx{meta.MaxRamMb}M -jar server.jar nogui",
                 WorkingDirectory = workingDir,
                 UseShellExecute = false,
                 RedirectStandardOutput = true,
@@ -124,6 +134,17 @@ namespace PocketMC.Desktop.Services
                 CreateNoWindow = true,
                 StandardOutputEncoding = Encoding.UTF8
             };
+            psi.ArgumentList.Add($"-Xms{minRamMb}M");
+            psi.ArgumentList.Add($"-Xmx{maxRamMb}M");
+
+            foreach (var argument in TokenizeAdvancedJvmArgs(meta.AdvancedJvmArgs))
+            {
+                psi.ArgumentList.Add(argument);
+            }
+
+            psi.ArgumentList.Add("-jar");
+            psi.ArgumentList.Add("server.jar");
+            psi.ArgumentList.Add("nogui");
 
             SetState(ServerState.Starting);
             _intentionalStop = false;
@@ -134,7 +155,10 @@ namespace PocketMC.Desktop.Services
 
             // Attach to job object so it dies with us
             try { _jobObject.AddProcess(_process.Handle); }
-            catch { /* Job object may fail on some configs — process still managed */ }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to assign Java process to the job object for instance {InstanceId}.", InstanceId);
+            }
 
             // Start background readers
             Task.Run(() => ReadStreamAsync(_process.StandardOutput, false));
@@ -168,7 +192,14 @@ namespace PocketMC.Desktop.Services
             catch (OperationCanceledException)
             {
                 // Force kill if it doesn't stop in time
-                try { _process.Kill(entireProcessTree: true); } catch { }
+                try
+                {
+                    _process.Kill(entireProcessTree: true);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to force-kill server instance {InstanceId} after stop timeout.", InstanceId);
+                }
             }
 
             SetState(ServerState.Stopped);
@@ -179,7 +210,15 @@ namespace PocketMC.Desktop.Services
             if (_process != null && !_process.HasExited)
             {
                 _intentionalStop = true;
-                try { _process.Kill(entireProcessTree: true); } catch { }
+                try
+                {
+                    _process.Kill(entireProcessTree: true);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to kill server instance {InstanceId}.", InstanceId);
+                }
+
                 SetState(ServerState.Stopped);
             }
         }
@@ -195,7 +234,14 @@ namespace PocketMC.Desktop.Services
                     if (OutputBuffer.Count > MAX_BUFFER_LINES)
                         OutputBuffer.TryDequeue(out _);
 
-                    try { _sessionLogWriter?.WriteLine(line); } catch { }
+                    try
+                    {
+                        _sessionLogWriter?.WriteLine(line);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogDebug(ex, "Failed to append output to the session log for instance {InstanceId}.", InstanceId);
+                    }
 
                     if (isError)
                         OnErrorLine?.Invoke(line);
@@ -217,7 +263,7 @@ namespace PocketMC.Desktop.Services
                         }
                         else if (line.Contains("players online:"))
                         {
-                            var match = Regex.Match(line, @"There are (\d+) of a max");
+                            var match = PlayerCountRegex.Match(line);
                             if (match.Success && int.TryParse(match.Groups[1].Value, out int count))
                             {
                                 PlayerCount = count;
@@ -236,8 +282,14 @@ namespace PocketMC.Desktop.Services
                     }
                 }
             }
-            catch (ObjectDisposedException) { }
-            catch (InvalidOperationException) { }
+            catch (ObjectDisposedException)
+            {
+                _logger.LogDebug("Console stream reader for instance {InstanceId} stopped because the process was disposed.", InstanceId);
+            }
+            catch (InvalidOperationException ex)
+            {
+                _logger.LogDebug(ex, "Console stream reader for instance {InstanceId} stopped because the process changed state.", InstanceId);
+            }
         }
 
         private void OnProcessExited(object? sender, EventArgs e)
@@ -274,11 +326,10 @@ namespace PocketMC.Desktop.Services
         /// Returns true if matched within timeout, false if timed out.
         /// Used by BackupService to synchronize with 'Saved the game'.
         /// </summary>
-        public async Task<bool> WaitForConsoleOutputAsync(string regexPattern, TimeSpan timeout)
+        public async Task<bool> WaitForConsoleOutputAsync(Regex regex, TimeSpan timeout)
         {
-            var tcs = new TaskCompletionSource<bool>();
-            var compiled = new Regex(regexPattern, RegexOptions.Compiled | RegexOptions.IgnoreCase);
-            _outputWaiters.TryAdd(tcs, compiled);
+            var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            _outputWaiters.TryAdd(tcs, regex);
 
             using var cts = new CancellationTokenSource(timeout);
             cts.Token.Register(() =>
@@ -299,6 +350,35 @@ namespace PocketMC.Desktop.Services
                 _sessionLogWriter = null;
                 Kill();
                 _process?.Dispose();
+            }
+        }
+
+        private static IEnumerable<string> TokenizeAdvancedJvmArgs(string? advancedJvmArgs)
+        {
+            if (string.IsNullOrWhiteSpace(advancedJvmArgs))
+            {
+                yield break;
+            }
+
+            foreach (Match match in Regex.Matches(advancedJvmArgs, "\"[^\"]*\"|\\S+"))
+            {
+                var token = match.Value.Trim();
+                if (string.IsNullOrWhiteSpace(token))
+                {
+                    continue;
+                }
+
+                if (token.IndexOfAny(new[] { '\r', '\n', '\0' }) >= 0)
+                {
+                    throw new InvalidOperationException("Advanced JVM arguments cannot contain control characters.");
+                }
+
+                if (token.Length >= 2 && token.StartsWith('"') && token.EndsWith('"'))
+                {
+                    token = token[1..^1];
+                }
+
+                yield return token;
             }
         }
     }

@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Text.Json;
 using System.Threading;
+using Microsoft.Extensions.Logging;
 using PocketMC.Desktop.Models;
 using PocketMC.Desktop.Utils;
 
@@ -11,22 +12,27 @@ namespace PocketMC.Desktop.Services
 {
     public class InstanceManager
     {
-        private readonly string _serversDirectory;
+        private readonly ApplicationState _applicationState;
+        private readonly ILogger<InstanceManager> _logger;
 
-        public InstanceManager(string appRootPath)
+        public InstanceManager(ApplicationState applicationState, ILogger<InstanceManager> logger)
         {
-            if (string.IsNullOrEmpty(appRootPath))
-            {
-                throw new ArgumentNullException(nameof(appRootPath));
-            }
-            _serversDirectory = Path.Combine(appRootPath, "servers");
+            _applicationState = applicationState;
+            _logger = logger;
         }
+
+        private string ServersDirectory => _applicationState.GetServersDirectory();
 
         private void EnsureDirectory()
         {
-            if (!Directory.Exists(_serversDirectory))
+            if (!_applicationState.IsConfigured)
             {
-                Directory.CreateDirectory(_serversDirectory);
+                throw new InvalidOperationException("PocketMC is not configured with an app root path yet.");
+            }
+
+            if (!Directory.Exists(ServersDirectory))
+            {
+                Directory.CreateDirectory(ServersDirectory);
             }
         }
 
@@ -35,7 +41,7 @@ namespace PocketMC.Desktop.Services
             EnsureDirectory();
             var instances = new List<InstanceMetadata>();
 
-            foreach (var dir in Directory.GetDirectories(_serversDirectory))
+            foreach (var dir in Directory.GetDirectories(ServersDirectory))
             {
                 var metadataFile = Path.Combine(dir, ".pocket-mc.json");
                 if (File.Exists(metadataFile))
@@ -49,9 +55,9 @@ namespace PocketMC.Desktop.Services
                             instances.Add(metadata);
                         }
                     }
-                    catch
+                    catch (Exception ex)
                     {
-                        // Ignore malformed files
+                        _logger.LogWarning(ex, "Skipping malformed instance metadata file {MetadataFile}.", metadataFile);
                     }
                 }
             }
@@ -62,7 +68,7 @@ namespace PocketMC.Desktop.Services
         public string? GetInstancePath(Guid id)
         {
             EnsureDirectory();
-            foreach (var dir in Directory.GetDirectories(_serversDirectory))
+            foreach (var dir in Directory.GetDirectories(ServersDirectory))
             {
                 var metadataFile = Path.Combine(dir, ".pocket-mc.json");
                 if (File.Exists(metadataFile))
@@ -70,10 +76,14 @@ namespace PocketMC.Desktop.Services
                     try
                     {
                         var content = File.ReadAllText(metadataFile);
-                        if (content.Contains(id.ToString()))
+                        var metadata = JsonSerializer.Deserialize<InstanceMetadata>(content);
+                        if (metadata?.Id == id)
                             return dir;
                     }
-                    catch { }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to inspect instance metadata at {MetadataFile}.", metadataFile);
+                    }
                 }
             }
             return null;
@@ -87,13 +97,13 @@ namespace PocketMC.Desktop.Services
             string slug = baseSlug;
             int counter = 2;
 
-            while (Directory.Exists(Path.Combine(_serversDirectory, slug)))
+            while (Directory.Exists(Path.Combine(ServersDirectory, slug)))
             {
                 slug = $"{baseSlug}-{counter}";
                 counter++;
             }
 
-            var newInstancePath = Path.Combine(_serversDirectory, slug);
+            var newInstancePath = Path.Combine(ServersDirectory, slug);
             Directory.CreateDirectory(newInstancePath);
 
             var metadata = new InstanceMetadata
@@ -114,7 +124,7 @@ namespace PocketMC.Desktop.Services
 
         public void UpdateMetadata(string folderName, string newName, string newDescription)
         {
-            var oldFolderPath = Path.Combine(_serversDirectory, folderName);
+            var oldFolderPath = Path.Combine(ServersDirectory, folderName);
             if (!Directory.Exists(oldFolderPath)) return;
 
             // 1. Calculate new slug
@@ -122,7 +132,7 @@ namespace PocketMC.Desktop.Services
             string newSlug = baseSlug;
             int counter = 2;
             
-            while (Directory.Exists(Path.Combine(_serversDirectory, newSlug)) && newSlug != folderName)
+            while (Directory.Exists(Path.Combine(ServersDirectory, newSlug)) && newSlug != folderName)
             {
                 newSlug = $"{baseSlug}-{counter}";
                 counter++;
@@ -133,14 +143,15 @@ namespace PocketMC.Desktop.Services
             // 2. Safely rename folder first (avoids antivirus file lock race conditions on the directory)
             if (newSlug != folderName)
             {
-                var newFolderPath = Path.Combine(_serversDirectory, newSlug);
+                var newFolderPath = Path.Combine(ServersDirectory, newSlug);
                 try
                 {
                     Directory.Move(oldFolderPath, newFolderPath);
                     currentFolderPath = newFolderPath;
                 }
-                catch (IOException)
+                catch (IOException ex)
                 {
+                    _logger.LogWarning(ex, "Failed to rename instance folder {OldFolderPath} to {NewFolderPath}.", oldFolderPath, newFolderPath);
                     // Fallback to original path if locked
                     currentFolderPath = oldFolderPath;
                 }
@@ -161,7 +172,7 @@ namespace PocketMC.Desktop.Services
 
         public void DeleteInstance(string folderName)
         {
-            var folderPath = Path.Combine(_serversDirectory, folderName);
+            var folderPath = Path.Combine(ServersDirectory, folderName);
             if (Directory.Exists(folderPath))
             {
                 // Simple retry logic since files might be temporarily locked
@@ -172,8 +183,9 @@ namespace PocketMC.Desktop.Services
                         Directory.Delete(folderPath, true);
                         break;
                     }
-                    catch (IOException)
+                    catch (IOException ex)
                     {
+                        _logger.LogWarning(ex, "Delete attempt {Attempt} failed for instance folder {FolderPath}.", i + 1, folderPath);
                         Thread.Sleep(500); // Wait 500ms and retry
                     }
                 }
@@ -182,7 +194,7 @@ namespace PocketMC.Desktop.Services
 
         public void OpenInExplorer(string folderName)
         {
-            var folderPath = Path.Combine(_serversDirectory, folderName);
+            var folderPath = Path.Combine(ServersDirectory, folderName);
             if (Directory.Exists(folderPath))
             {
                 Process.Start(new ProcessStartInfo
@@ -196,13 +208,19 @@ namespace PocketMC.Desktop.Services
 
         public void AcceptEula(string folderName)
         {
-            var folderPath = Path.Combine(_serversDirectory, folderName);
+            var folderPath = Path.Combine(ServersDirectory, folderName);
             if (Directory.Exists(folderPath))
             {
                 File.WriteAllText(Path.Combine(folderPath, "eula.txt"), 
                     "# By changing the setting below to TRUE you are indicating your agreement to our EULA (https://aka.ms/MinecraftEULA).\n" +
                     "eula=true\n");
             }
+        }
+
+        public void SaveMetadata(InstanceMetadata metadata, string instancePath)
+        {
+            var metadataFile = Path.Combine(instancePath, ".pocket-mc.json");
+            File.WriteAllText(metadataFile, JsonSerializer.Serialize(metadata, new JsonSerializerOptions { WriteIndented = true }));
         }
     }
 }

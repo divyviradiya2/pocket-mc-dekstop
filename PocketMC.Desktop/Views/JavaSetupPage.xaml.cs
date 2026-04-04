@@ -9,6 +9,8 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using PocketMC.Desktop.Services;
 
 namespace PocketMC.Desktop.Views
@@ -52,25 +54,33 @@ namespace PocketMC.Desktop.Views
 
     public partial class JavaSetupPage : Page
     {
-        private readonly string _appRootPath;
+        private readonly ApplicationState _applicationState;
+        private readonly IServiceProvider _serviceProvider;
+        private readonly ILogger<JavaSetupPage> _logger;
         public ObservableCollection<JreDownloadTask> DownloadTasks { get; } = new();
 
-        public JavaSetupPage(string appRootPath)
+        public JavaSetupPage(
+            ApplicationState applicationState,
+            IServiceProvider serviceProvider,
+            ILogger<JavaSetupPage> logger)
         {
             InitializeComponent();
-            _appRootPath = appRootPath;
+            _applicationState = applicationState;
+            _serviceProvider = serviceProvider;
+            _logger = logger;
             TasksList.ItemsSource = DownloadTasks;
             Loaded += OnLoaded;
         }
 
         private async void OnLoaded(object sender, RoutedEventArgs e)
         {
+            string appRootPath = _applicationState.GetRequiredAppRootPath();
             int[] requiredVersions = { 11, 17, 21, 25 };
             bool anyMissing = false;
 
             foreach (var v in requiredVersions)
             {
-                string exePath = Path.Combine(_appRootPath, "runtime", $"java{v}", "bin", "java.exe");
+                string exePath = Path.Combine(appRootPath, "runtime", $"java{v}", "bin", "java.exe");
                 // Check if java.exe exists and is a reasonable size (> 20KB) to catch corruption
                 if (!File.Exists(exePath) || new FileInfo(exePath).Length < 20000)
                 {
@@ -83,7 +93,7 @@ namespace PocketMC.Desktop.Views
             {
                 // Still ensure playit.exe is downloaded even when JREs are present (NET-01)
                 await EnsurePlayitReadyAsync();
-                NavigationService.Navigate(new DashboardPage(_appRootPath));
+                NavigationService.Navigate(_serviceProvider.GetRequiredService<DashboardPage>());
                 return;
             }
 
@@ -102,10 +112,11 @@ namespace PocketMC.Desktop.Views
 
                 TxtGlobalStatus.Text = "All runtimes configured successfully!";
                 await Task.Delay(1000);
-                NavigationService.Navigate(new DashboardPage(_appRootPath));
+                NavigationService.Navigate(_serviceProvider.GetRequiredService<DashboardPage>());
             }
             catch (Exception ex)
             {
+                _logger.LogError(ex, "Java runtime acquisition failed.");
                 TxtGlobalStatus.Text = $"Error: {ex.Message}";
                 TxtGlobalStatus.Foreground = Brushes.Red;
             }
@@ -127,9 +138,10 @@ namespace PocketMC.Desktop.Views
                 throw new Exception($"Could not find download link for Java {task.Version}");
 
             var downloader = new DownloaderService();
-            string tempZipPath = Path.Combine(_appRootPath, "runtime", $"temp_java{task.Version}.zip");
-            string extractPath = Path.Combine(_appRootPath, "runtime", $"java{task.Version}_ext");
-            string finalPath = Path.Combine(_appRootPath, "runtime", $"java{task.Version}");
+            string appRootPath = _applicationState.GetRequiredAppRootPath();
+            string tempZipPath = Path.Combine(appRootPath, "runtime", $"temp_java{task.Version}.zip");
+            string extractPath = Path.Combine(appRootPath, "runtime", $"java{task.Version}_ext");
+            string finalPath = Path.Combine(appRootPath, "runtime", $"java{task.Version}");
 
             var downloadProgress = new Progress<DownloadProgress>(p =>
             {
@@ -189,12 +201,12 @@ namespace PocketMC.Desktop.Views
             try
             {
                 var downloader = new DownloaderService();
-                await downloader.EnsurePlayitDownloadedAsync(_appRootPath);
+                await downloader.EnsurePlayitDownloadedAsync(_applicationState.GetRequiredAppRootPath());
             }
             catch (Exception ex)
             {
                 // Playit download failure is non-fatal — server management still works
-                System.Diagnostics.Debug.WriteLine($"Playit download failed (non-fatal): {ex.Message}");
+                _logger.LogWarning(ex, "Playit download failed but the rest of the app can continue.");
             }
         }
     }

@@ -3,8 +3,8 @@ using System.Diagnostics;
 using System.IO;
 using System.Text;
 using System.Text.RegularExpressions;
-using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
 
 namespace PocketMC.Desktop.Services
 {
@@ -38,8 +38,9 @@ namespace PocketMC.Desktop.Services
 
         private Process? _agentProcess;
         private readonly JobObject _jobObject;
-        private readonly string _appRootPath;
-        private readonly string _logFilePath;
+        private readonly ApplicationState _applicationState;
+        private readonly SettingsManager _settingsManager;
+        private readonly ILogger<PlayitAgentService> _logger;
         private StreamWriter? _logWriter;
         private bool _disposed;
         private bool _claimUrlAlreadyFired;
@@ -67,12 +68,20 @@ namespace PocketMC.Desktop.Services
         /// </summary>
         public event EventHandler<int>? OnAgentExited;
 
-        public PlayitAgentService(string appRootPath, JobObject jobObject)
+        public PlayitAgentService(
+            ApplicationState applicationState,
+            SettingsManager settingsManager,
+            JobObject jobObject,
+            ILogger<PlayitAgentService> logger)
         {
-            _appRootPath = appRootPath;
+            _applicationState = applicationState;
+            _settingsManager = settingsManager;
             _jobObject = jobObject;
-            _logFilePath = Path.Combine(appRootPath, "tunnel", "playit-agent.log");
+            _logger = logger;
         }
+
+        public bool IsBinaryAvailable =>
+            _applicationState.IsConfigured && File.Exists(_applicationState.GetPlayitExecutablePath());
 
         /// <summary>
         /// Starts the playit.exe agent process (NET-02).
@@ -82,7 +91,14 @@ namespace PocketMC.Desktop.Services
             if (_agentProcess != null && !_agentProcess.HasExited)
                 return; // Already running
 
-            string playitPath = Path.Combine(_appRootPath, "tunnel", "playit.exe");
+            if (!_applicationState.IsConfigured)
+            {
+                _logger.LogWarning("Playit agent start was requested before the app root path was configured.");
+                SetState(PlayitAgentState.Error);
+                return;
+            }
+
+            string playitPath = _applicationState.GetPlayitExecutablePath();
             if (!File.Exists(playitPath))
             {
                 SetState(PlayitAgentState.Error);
@@ -90,12 +106,14 @@ namespace PocketMC.Desktop.Services
                 return;
             }
 
+            string logFilePath = Path.Combine(_applicationState.GetRequiredAppRootPath(), "tunnel", "playit-agent.log");
+
             // Ensure log directory exists
-            string? logDir = Path.GetDirectoryName(_logFilePath);
+            string? logDir = Path.GetDirectoryName(logFilePath);
             if (!string.IsNullOrEmpty(logDir))
                 Directory.CreateDirectory(logDir);
 
-            _logWriter = new StreamWriter(_logFilePath, append: true, encoding: Encoding.UTF8)
+            _logWriter = new StreamWriter(logFilePath, append: true, encoding: Encoding.UTF8)
             {
                 AutoFlush = true
             };
@@ -121,7 +139,10 @@ namespace PocketMC.Desktop.Services
 
             // Assign to Job Object so it terminates when PocketMC crashes (NET-02)
             try { _jobObject.AddProcess(_agentProcess.Handle); }
-            catch { /* Non-fatal — process still tracked manually */ }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to assign playit.exe to the job object.");
+            }
 
             Log("INFO: playit.exe started (PID: " + _agentProcess.Id + ")");
 
@@ -138,6 +159,8 @@ namespace PocketMC.Desktop.Services
             if (_agentProcess == null || _agentProcess.HasExited)
             {
                 SetState(PlayitAgentState.Stopped);
+                _logWriter?.Dispose();
+                _logWriter = null;
                 return;
             }
 
@@ -145,12 +168,17 @@ namespace PocketMC.Desktop.Services
             {
                 _agentProcess.Kill(entireProcessTree: true);
             }
-            catch { }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to stop playit.exe cleanly.");
+            }
 
             SetState(PlayitAgentState.Stopped);
             Log("INFO: playit.exe stopped");
             _logWriter?.Dispose();
             _logWriter = null;
+            _agentProcess.Dispose();
+            _agentProcess = null;
         }
 
         private async Task ReadOutputAsync(StreamReader reader)
@@ -171,14 +199,15 @@ namespace PocketMC.Desktop.Services
                         
                         try
                         {
-                            string tomlPath = Path.Combine(
-                                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), 
-                                "playit_gg", "playit.toml");
+                            string tomlPath = _settingsManager.GetPlayitTomlPath(_applicationState.Settings);
                             
                             if (File.Exists(tomlPath))
                                 File.Delete(tomlPath);
                         }
-                        catch { /* Ignore delete errors */ }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "Failed to delete playit config while recovering from an invalid secret.");
+                        }
 
                         // Schedule a restart (using a fire-and-forget task so we don't block the output reader)
                         _ = Task.Run(async () =>
@@ -246,10 +275,11 @@ namespace PocketMC.Desktop.Services
                 {
                     Start();
                 }
-                catch
+                catch (Exception ex)
                 {
                     SetState(PlayitAgentState.Error);
                     Log("ERROR: Restart failed — agent offline");
+                    _logger.LogError(ex, "Failed to restart playit.exe after an unexpected exit.");
                 }
             }
             else
@@ -270,8 +300,14 @@ namespace PocketMC.Desktop.Services
         private void Log(string message)
         {
             string timestamped = $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}] {message}";
-            try { _logWriter?.WriteLine(timestamped); }
-            catch { /* Best-effort logging */ }
+            try
+            {
+                _logWriter?.WriteLine(timestamped);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to write to the playit agent log.");
+            }
         }
 
         public void Dispose()

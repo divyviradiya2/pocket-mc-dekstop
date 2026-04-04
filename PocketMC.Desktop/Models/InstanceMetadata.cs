@@ -26,5 +26,6 @@ namespace PocketMC.Desktop.Models
         
         // Runtime configuration (NET-14)
         public string? CustomJavaPath { get; set; } = null;
+        public string? AdvancedJvmArgs { get; set; } = null;
     }
 }

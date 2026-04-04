@@ -9,9 +9,8 @@ using System.Windows.Documents;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Collections.ObjectModel;
-using System.Collections.Generic;
 using Microsoft.Win32;
-using System.IO.Compression;
+using Microsoft.Extensions.Logging;
 using PocketMC.Desktop.Models;
 using PocketMC.Desktop.Services;
 using PocketMC.Desktop.Utils;
@@ -25,40 +24,40 @@ namespace PocketMC.Desktop.Views
     }
     public partial class ServerSettingsPage : Page
     {
+        private readonly InstanceManager _instanceManager;
+        private readonly ServerProcessManager _serverProcessManager;
+        private readonly PlayitAgentService _playitAgentService;
+        private readonly PlayitApiClient _playitApiClient;
+        private readonly ILogger<ServerSettingsPage> _logger;
         private InstanceMetadata _metadata;
-        private string _appRoot;
         private string _serverDir;
-        private readonly WorldManager _worldManager = new();
-        private readonly BackupService _backupService = new();
+        private readonly WorldManager _worldManager;
+        private readonly BackupService _backupService;
         private ulong _totalSystemRamMb;
         private bool _hasUnsavedChanges = false;
         private bool _isLoading = false;
 
-        public ServerSettingsPage(InstanceMetadata metadata, string appRoot)
+        public ServerSettingsPage(
+            InstanceMetadata metadata,
+            InstanceManager instanceManager,
+            ServerProcessManager serverProcessManager,
+            WorldManager worldManager,
+            BackupService backupService,
+            PlayitAgentService playitAgentService,
+            PlayitApiClient playitApiClient,
+            ILogger<ServerSettingsPage> logger)
         {
             InitializeComponent();
+            _instanceManager = instanceManager;
+            _serverProcessManager = serverProcessManager;
+            _worldManager = worldManager;
+            _backupService = backupService;
+            _playitAgentService = playitAgentService;
+            _playitApiClient = playitApiClient;
+            _logger = logger;
             _metadata = metadata;
-            _appRoot = appRoot;
-            
-            _serverDir = Path.Combine(_appRoot, "servers");
-            foreach (var dir in Directory.GetDirectories(_serverDir))
-            {
-                var metaFile = Path.Combine(dir, ".pocket-mc.json");
-                if (File.Exists(metaFile))
-                {
-                    try
-                    {
-                        var content = File.ReadAllText(metaFile);
-                        var meta = System.Text.Json.JsonSerializer.Deserialize<InstanceMetadata>(content);
-                        if (meta != null && meta.Id == _metadata.Id)
-                        {
-                            _serverDir = dir;
-                            break;
-                        }
-                    }
-                    catch { }
-                }
-            }
+            _serverDir = _instanceManager.GetInstancePath(_metadata.Id)
+                ?? throw new DirectoryNotFoundException($"Could not locate the server directory for '{_metadata.Name}'.");
 
             LoadSettings();
             LoadWorldTab();
@@ -111,7 +110,7 @@ namespace PocketMC.Desktop.Views
 
         private void RefreshLockStates()
         {
-            bool isRunning = ServerProcessManager.IsRunning(_metadata.Id);
+            bool isRunning = _serverProcessManager.IsRunning(_metadata.Id);
 
             // Worlds tab
             TxtWorldLockWarning.Visibility = isRunning ? Visibility.Visible : Visibility.Collapsed;
@@ -147,6 +146,7 @@ namespace PocketMC.Desktop.Views
             SldMinRam.Value = _metadata.MinRamMb > 0 ? _metadata.MinRamMb : 1024;
             SldMaxRam.Value = _metadata.MaxRamMb > 0 ? _metadata.MaxRamMb : 4096;
             TxtJavaPath.Text = _metadata.CustomJavaPath ?? "";
+            TxtAdvancedJvmArgs.Text = _metadata.AdvancedJvmArgs ?? "";
 
             var propsFile = Path.Combine(_serverDir, "server.properties");
             var props = ServerPropertiesParser.Read(propsFile);
@@ -222,14 +222,17 @@ namespace PocketMC.Desktop.Views
                     bmp.EndInit();
                     ImgIconPreview.Source = bmp;
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to load the server icon from {IconPath}.", iconPath);
+                }
             }
 
             // Update Playit Agent Status
-            if (DashboardPage.PlayitAgent != null)
+            if (_playitAgentService.State != PlayitAgentState.Stopped)
             {
-                TxtPlayitAgentStatus.Text = DashboardPage.PlayitAgent.State.ToString();
-                TxtPlayitAgentStatus.Foreground = DashboardPage.PlayitAgent.State == PlayitAgentState.Connected ? Brushes.LimeGreen : Brushes.Orange;
+                TxtPlayitAgentStatus.Text = _playitAgentService.State.ToString();
+                TxtPlayitAgentStatus.Foreground = _playitAgentService.State == PlayitAgentState.Connected ? Brushes.LimeGreen : Brushes.Orange;
             }
             else
             {
@@ -265,12 +268,15 @@ namespace PocketMC.Desktop.Views
             TxtPlayitAddress.Text = "Resolving tunnel for port " + port + "...";
             try
             {
-                var apiClient = new PlayitApiClient();
-                var result = await apiClient.GetTunnelsAsync();
+                var result = await _playitApiClient.GetTunnelsAsync();
 
                 if (!result.Success)
                 {
-                    TxtPlayitAddress.Text = result.IsTokenInvalid ? "⚠️ Token invalid. Re-link account via Dashboard." : "⚠️ API unreachable.";
+                    TxtPlayitAddress.Text = result.RequiresClaim
+                        ? "⚠️ Setup still pending. Finish the Playit claim flow from Dashboard."
+                        : result.IsTokenInvalid
+                            ? "⚠️ Token invalid. Re-link account via Dashboard."
+                            : "⚠️ API unreachable.";
                     return;
                 }
 
@@ -284,8 +290,9 @@ namespace PocketMC.Desktop.Views
                     TxtPlayitAddress.Text = "No tunnel linked for this port. Start the server to create one.";
                 }
             }
-            catch
+            catch (Exception ex)
             {
+                _logger.LogWarning(ex, "Failed to resolve the Playit tunnel address for {ServerName}.", _metadata.Name);
                 TxtPlayitAddress.Text = "Failed to resolve tunnel.";
             }
         }
@@ -306,7 +313,7 @@ namespace PocketMC.Desktop.Views
             TxtMotdPreview.Text = TxtMotd.Text;
         }
 
-        private void BtnBrowseIcon_Click(object sender, RoutedEventArgs e)
+        private async void BtnBrowseIcon_Click(object sender, RoutedEventArgs e)
         {
             var dlg = new OpenFileDialog
             {
@@ -332,11 +339,12 @@ namespace PocketMC.Desktop.Views
 
                     ImgIconPreview.Source = bmp;
                     var dest = Path.Combine(_serverDir, "server-icon.png");
-                    File.Copy(dlg.FileName, dest, true);
+                    await FileUtils.CopyFileAsync(dlg.FileName, dest, overwrite: true);
                 }
                 catch (Exception ex)
                 {
                     MessageBox.Show("Error loading image: " + ex.Message, "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                    _logger.LogWarning(ex, "Failed to import the server icon from {SourceFile}.", dlg.FileName);
                 }
             }
         }
@@ -381,9 +389,8 @@ namespace PocketMC.Desktop.Views
             if (int.TryParse(TxtMaxAutoRestarts.Text, out int m)) _metadata.MaxAutoRestarts = m;
             if (int.TryParse(TxtAutoRestartDelay.Text, out int d)) _metadata.AutoRestartDelaySeconds = d;
             _metadata.CustomJavaPath = string.IsNullOrWhiteSpace(TxtJavaPath.Text) ? null : TxtJavaPath.Text;
-
-            var metaFile = Path.Combine(_serverDir, ".pocket-mc.json");
-            File.WriteAllText(metaFile, System.Text.Json.JsonSerializer.Serialize(_metadata, new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
+            _metadata.AdvancedJvmArgs = string.IsNullOrWhiteSpace(TxtAdvancedJvmArgs.Text) ? null : TxtAdvancedJvmArgs.Text.Trim();
+            _instanceManager.SaveMetadata(_metadata, _serverDir);
 
             var propsFile = Path.Combine(_serverDir, "server.properties");
             var props = ServerPropertiesParser.Read(propsFile);
@@ -598,7 +605,7 @@ namespace PocketMC.Desktop.Views
                     Foreground = Brushes.White,
                     VerticalAlignment = VerticalAlignment.Center,
                     Tag = jar,
-                    IsEnabled = !ServerProcessManager.IsRunning(_metadata.Id)
+                    IsEnabled = !_serverProcessManager.IsRunning(_metadata.Id)
                 };
                 deleteBtn.Click += DeletePlugin_Click;
                 Grid.SetColumn(deleteBtn, 2);
@@ -621,7 +628,7 @@ namespace PocketMC.Desktop.Views
             RefreshLockStates();
         }
 
-        private void BtnAddPlugin_Click(object sender, RoutedEventArgs e)
+        private async void BtnAddPlugin_Click(object sender, RoutedEventArgs e)
         {
             var dlg = new OpenFileDialog
             {
@@ -636,13 +643,13 @@ namespace PocketMC.Desktop.Views
                 foreach (var file in dlg.FileNames)
                 {
                     var dest = Path.Combine(pluginsDir, Path.GetFileName(file));
-                    File.Copy(file, dest, true);
+                    await FileUtils.CopyFileAsync(file, dest, overwrite: true);
                 }
                 LoadPluginTab();
             }
         }
 
-        private void DeletePlugin_Click(object sender, RoutedEventArgs e)
+        private async void DeletePlugin_Click(object sender, RoutedEventArgs e)
         {
             if (sender is Button btn && btn.Tag is string path)
             {
@@ -654,12 +661,13 @@ namespace PocketMC.Desktop.Views
                 {
                     try
                     {
-                        File.Delete(path);
+                        await FileUtils.DeleteFileAsync(path);
                         LoadPluginTab();
                     }
                     catch (Exception ex)
                     {
                         MessageBox.Show($"Failed to delete: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                        _logger.LogWarning(ex, "Failed to delete plugin {PluginPath}.", path);
                     }
                 }
             }
@@ -735,7 +743,7 @@ namespace PocketMC.Desktop.Views
                     Foreground = Brushes.White,
                     VerticalAlignment = VerticalAlignment.Center,
                     Tag = jar,
-                    IsEnabled = !ServerProcessManager.IsRunning(_metadata.Id)
+                    IsEnabled = !_serverProcessManager.IsRunning(_metadata.Id)
                 };
                 deleteBtn.Click += DeleteMod_Click;
                 Grid.SetColumn(deleteBtn, 1);
@@ -758,7 +766,7 @@ namespace PocketMC.Desktop.Views
             RefreshLockStates();
         }
 
-        private void BtnAddMod_Click(object sender, RoutedEventArgs e)
+        private async void BtnAddMod_Click(object sender, RoutedEventArgs e)
         {
             var dlg = new OpenFileDialog
             {
@@ -773,13 +781,13 @@ namespace PocketMC.Desktop.Views
                 foreach (var file in dlg.FileNames)
                 {
                     var dest = Path.Combine(modsDir, Path.GetFileName(file));
-                    File.Copy(file, dest, true);
+                    await FileUtils.CopyFileAsync(file, dest, overwrite: true);
                 }
                 LoadModTab();
             }
         }
 
-        private void DeleteMod_Click(object sender, RoutedEventArgs e)
+        private async void DeleteMod_Click(object sender, RoutedEventArgs e)
         {
             if (sender is Button btn && btn.Tag is string path)
             {
@@ -791,12 +799,13 @@ namespace PocketMC.Desktop.Views
                 {
                     try
                     {
-                        File.Delete(path);
+                        await FileUtils.DeleteFileAsync(path);
                         LoadModTab();
                     }
                     catch (Exception ex)
                     {
                         MessageBox.Show($"Failed to delete: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                        _logger.LogWarning(ex, "Failed to delete mod {ModPath}.", path);
                     }
                 }
             }
@@ -829,7 +838,7 @@ namespace PocketMC.Desktop.Views
             }
 
             // Show restore lock warning if running
-            bool isRunning = ServerProcessManager.IsRunning(_metadata.Id);
+            bool isRunning = _serverProcessManager.IsRunning(_metadata.Id);
             TxtBackupLockWarning.Visibility = isRunning ? Visibility.Visible : Visibility.Collapsed;
 
             // Load backup list
@@ -867,7 +876,7 @@ namespace PocketMC.Desktop.Views
                 return;
             }
 
-            bool isRunning = ServerProcessManager.IsRunning(_metadata.Id);
+            bool isRunning = _serverProcessManager.IsRunning(_metadata.Id);
 
             foreach (var file in files)
             {
@@ -960,7 +969,7 @@ namespace PocketMC.Desktop.Views
 
         private async void RestoreBackup_Click(object sender, RoutedEventArgs e)
         {
-            if (ServerProcessManager.IsRunning(_metadata.Id))
+            if (_serverProcessManager.IsRunning(_metadata.Id))
             {
                 MessageBox.Show("Stop the server before restoring a backup.", "Server Running", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
@@ -995,7 +1004,7 @@ namespace PocketMC.Desktop.Views
             }
         }
 
-        private void DeleteBackup_Click(object sender, RoutedEventArgs e)
+        private async void DeleteBackup_Click(object sender, RoutedEventArgs e)
         {
             if (sender is Button btn && btn.Tag is string path)
             {
@@ -1007,12 +1016,13 @@ namespace PocketMC.Desktop.Views
                 {
                     try
                     {
-                        File.Delete(path);
+                        await FileUtils.DeleteFileAsync(path);
                         RefreshBackupList();
                     }
                     catch (Exception ex)
                     {
                         MessageBox.Show($"Failed to delete: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                        _logger.LogWarning(ex, "Failed to delete backup archive {BackupPath}.", path);
                     }
                 }
             }
@@ -1044,9 +1054,7 @@ namespace PocketMC.Desktop.Views
 
         private void SaveMetadata()
         {
-            var metaFile = Path.Combine(_serverDir, ".pocket-mc.json");
-            File.WriteAllText(metaFile, System.Text.Json.JsonSerializer.Serialize(_metadata,
-                new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
+            _instanceManager.SaveMetadata(_metadata, _serverDir);
         }
 
         // ════════════════════════════════════════════════

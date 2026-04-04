@@ -1,6 +1,6 @@
 using System;
-using System.IO;
 using System.Timers;
+using Microsoft.Extensions.Logging;
 using PocketMC.Desktop.Models;
 
 namespace PocketMC.Desktop.Services
@@ -12,13 +12,22 @@ namespace PocketMC.Desktop.Services
     public class BackupSchedulerService : IDisposable
     {
         private readonly System.Timers.Timer _timer;
-        private readonly BackupService _backupService = new();
-        private readonly string _appRoot;
+        private readonly ApplicationState _applicationState;
+        private readonly BackupService _backupService;
+        private readonly InstanceManager _instanceManager;
+        private readonly ILogger<BackupSchedulerService> _logger;
         private bool _isProcessing;
 
-        public BackupSchedulerService(string appRoot)
+        public BackupSchedulerService(
+            ApplicationState applicationState,
+            BackupService backupService,
+            InstanceManager instanceManager,
+            ILogger<BackupSchedulerService> logger)
         {
-            _appRoot = appRoot;
+            _applicationState = applicationState;
+            _backupService = backupService;
+            _instanceManager = instanceManager;
+            _logger = logger;
             _timer = new System.Timers.Timer(60_000); // Check every 60 seconds
             _timer.Elapsed += OnTimerTick;
             _timer.AutoReset = true;
@@ -35,32 +44,34 @@ namespace PocketMC.Desktop.Services
 
             try
             {
-                var serversDir = Path.Combine(_appRoot, "servers");
-                if (!Directory.Exists(serversDir)) return;
-
-                foreach (var dir in Directory.GetDirectories(serversDir))
+                if (!_applicationState.IsConfigured)
                 {
-                    var metaFile = Path.Combine(dir, ".pocket-mc.json");
-                    if (!File.Exists(metaFile)) continue;
+                    return;
+                }
+
+                foreach (var meta in _instanceManager.GetAllInstances())
+                {
+                    var instancePath = _instanceManager.GetInstancePath(meta.Id);
+                    if (string.IsNullOrEmpty(instancePath))
+                    {
+                        continue;
+                    }
 
                     try
                     {
-                        var json = File.ReadAllText(metaFile);
-                        var meta = System.Text.Json.JsonSerializer.Deserialize<InstanceMetadata>(json);
-                        if (meta == null || meta.BackupIntervalHours <= 0) continue;
+                        if (meta.BackupIntervalHours <= 0) continue;
 
                         var lastBackup = meta.LastBackupTime ?? DateTime.MinValue;
                         var nextDue = lastBackup.AddHours(meta.BackupIntervalHours);
 
                         if (DateTime.UtcNow >= nextDue)
                         {
-                            // Fire and forget on thread pool — errors are silently caught
-                            await _backupService.RunBackupAsync(meta, dir);
+                            await _backupService.RunBackupAsync(meta, instancePath);
                         }
                     }
-                    catch
+                    catch (Exception ex)
                     {
-                        // Skip this instance on any error — don't crash the scheduler
+                        _logger.LogWarning(ex, "Skipping scheduled backup for server {ServerName}.", meta.Name);
                     }
                 }
             }

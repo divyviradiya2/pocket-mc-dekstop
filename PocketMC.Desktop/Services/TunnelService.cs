@@ -1,9 +1,8 @@
 using System;
 using System.Diagnostics;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using PocketMC.Desktop.Models;
+using Microsoft.Extensions.Logging;
 
 namespace PocketMC.Desktop.Services
 {
@@ -40,11 +39,13 @@ namespace PocketMC.Desktop.Services
     {
         private readonly PlayitApiClient _apiClient;
         private readonly PlayitAgentService _agentService;
+        private readonly ILogger<TunnelService> _logger;
 
-        public TunnelService(PlayitApiClient apiClient, PlayitAgentService agentService)
+        public TunnelService(PlayitApiClient apiClient, PlayitAgentService agentService, ILogger<TunnelService> logger)
         {
             _apiClient = apiClient;
             _agentService = agentService;
+            _logger = logger;
         }
 
         /// <summary>
@@ -107,7 +108,10 @@ namespace PocketMC.Desktop.Services
                     UseShellExecute = true
                 });
             }
-            catch { }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to open the Playit tunnel creation page.");
+            }
 
             return new TunnelResolutionResult
             {

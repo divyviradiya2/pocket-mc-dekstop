@@ -5,12 +5,15 @@ using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
 using PocketMC.Desktop.Models;
 
 namespace PocketMC.Desktop.Services
 {
     public class ResourceMonitorService : IDisposable
     {
+        private readonly ServerProcessManager _serverProcessManager;
+        private readonly ILogger<ResourceMonitorService> _logger;
         private readonly Timer _timer;
         private int _listCommandTick = 0;
         
@@ -25,14 +28,16 @@ namespace PocketMC.Desktop.Services
         
         private readonly ConcurrentDictionary<Guid, ProcessTracker> _trackers = new();
 
-        public ResourceMonitorService()
+        public ResourceMonitorService(ServerProcessManager serverProcessManager, ILogger<ResourceMonitorService> logger)
         {
+            _serverProcessManager = serverProcessManager;
+            _logger = logger;
             _timer = new Timer(OnTick, null, 2000, 2000);
         }
 
         private void OnTick(object? state)
         {
-            var activeProcesses = ServerProcessManager.ActiveProcesses.Values
+            var activeProcesses = _serverProcessManager.ActiveProcesses.Values
                 .Where(p => p.State == ServerState.Online || p.State == ServerState.Starting).ToList();
             int count = activeProcesses.Count;
             if (count == 0)
@@ -93,8 +98,14 @@ namespace PocketMC.Desktop.Services
                         Task.Run(() => sp.WriteInputAsync("list"));
                     }
                 }
-                catch (Win32Exception) { }
-                catch (InvalidOperationException) { }
+                catch (Win32Exception ex)
+                {
+                    _logger.LogDebug(ex, "Skipping metric sample for instance {InstanceId} because the process is no longer accessible.", sp.InstanceId);
+                }
+                catch (InvalidOperationException ex)
+                {
+                    _logger.LogDebug(ex, "Skipping metric sample for instance {InstanceId} because the process is no longer valid.", sp.InstanceId);
+                }
             }
             
             // Clean up trackers for stopped instances

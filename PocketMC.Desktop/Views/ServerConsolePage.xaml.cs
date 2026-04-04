@@ -7,6 +7,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
+using Microsoft.Extensions.Logging;
 using PocketMC.Desktop.Models;
 using PocketMC.Desktop.Services;
 
@@ -29,6 +30,7 @@ namespace PocketMC.Desktop.Views
     {
         private readonly InstanceMetadata _metadata;
         private readonly ServerProcess _serverProcess;
+        private readonly ILogger<ServerConsolePage> _logger;
         private readonly ConcurrentQueue<LogLine> _pendingLines = new();
         private readonly DispatcherTimer _flushTimer;
         private const int MAX_LOG_LINES = 10000;
@@ -54,10 +56,11 @@ namespace PocketMC.Desktop.Views
 
         public bool CanStopServer => _serverProcess.State == ServerState.Online || _serverProcess.State == ServerState.Starting;
 
-        public ServerConsolePage(InstanceMetadata metadata, ServerProcess serverProcess)
+        public ServerConsolePage(InstanceMetadata metadata, ServerProcess serverProcess, ILogger<ServerConsolePage> logger)
         {
             _metadata = metadata;
             _serverProcess = serverProcess;
+            _logger = logger;
 
             InitializeComponent();
             DataContext = this;
@@ -161,7 +164,10 @@ namespace PocketMC.Desktop.Views
                     }
                 }
             }
-            catch { /* Ignore recovery errors */ }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to load the session log history for {ServerName}.", _metadata.Name);
+            }
         }
 
         /// <summary>
@@ -259,7 +265,7 @@ namespace PocketMC.Desktop.Views
             }
         }
 
-        private async void BtnRestart_Click(object sender, RoutedEventArgs e)
+        private void BtnRestart_Click(object sender, RoutedEventArgs e)
         {
             Logs.Add(new LogLine { Text = "[PocketMC] Restart is not yet implemented. Stop and start manually.", TextColor = Brushes.Orange });
         }

@@ -3,7 +3,9 @@ using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
 using PocketMC.Desktop.Models;
 
 namespace PocketMC.Desktop.Services
@@ -14,6 +16,19 @@ namespace PocketMC.Desktop.Services
     /// </summary>
     public class BackupService
     {
+        private static readonly Regex SaveCompletedRegex = new(
+            @"(saved the game|saved the world|saved chunks|saved all chunks|all dimensions are saved|world saved)",
+            RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+        private readonly ServerProcessManager _serverProcessManager;
+        private readonly ILogger<BackupService> _logger;
+
+        public BackupService(ServerProcessManager serverProcessManager, ILogger<BackupService> logger)
+        {
+            _serverProcessManager = serverProcessManager;
+            _logger = logger;
+        }
+
         // Files the JVM holds exclusively — always skip these
         private static readonly HashSet<string> SkipFiles = new(StringComparer.OrdinalIgnoreCase)
         {
@@ -38,8 +53,8 @@ namespace PocketMC.Desktop.Services
             string timestamp = DateTime.Now.ToString("yyyy-MM-dd-HH-mm-ss");
             string zipPath = Path.Combine(backupDir, $"world-{timestamp}.zip");
 
-            bool isRunning = ServerProcessManager.IsRunning(metadata.Id);
-            var process = ServerProcessManager.GetProcess(metadata.Id);
+            bool isRunning = _serverProcessManager.IsRunning(metadata.Id);
+            var process = _serverProcessManager.GetProcess(metadata.Id);
             var skippedFiles = new List<string>();
 
             try
@@ -55,12 +70,14 @@ namespace PocketMC.Desktop.Services
                     await process.WriteInputAsync("save-all");
 
                     onProgress?.Invoke("Waiting for save to complete...");
-                    bool saved = await process.WaitForConsoleOutputAsync("Saved the game", TimeSpan.FromSeconds(30));
+                    bool saved = await process.WaitForConsoleOutputAsync(SaveCompletedRegex, TimeSpan.FromSeconds(15));
 
                     if (!saved)
                     {
-                        await process.WriteInputAsync("save-on");
-                        throw new TimeoutException("Server did not confirm save within 30 seconds. Backup aborted.");
+                        _logger.LogWarning(
+                            "Server {ServerName} did not emit a recognized save confirmation. Proceeding after a short settle delay.",
+                            metadata.Name);
+                        await Task.Delay(TimeSpan.FromSeconds(2));
                     }
                 }
 
@@ -72,7 +89,15 @@ namespace PocketMC.Desktop.Services
                 var zipInfo = new FileInfo(zipPath);
                 if (!zipInfo.Exists || zipInfo.Length == 0)
                 {
-                    try { File.Delete(zipPath); } catch { }
+                    try
+                    {
+                        File.Delete(zipPath);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to delete empty backup archive {ZipPath}.", zipPath);
+                    }
+
                     throw new IOException("Backup produced an empty ZIP file.");
                 }
 
@@ -81,10 +106,22 @@ namespace PocketMC.Desktop.Services
                 else
                     onProgress?.Invoke("Backup complete!");
             }
-            catch
+            catch (Exception ex)
             {
                 // Clean up partial/failed ZIP so 0-byte ghosts don't appear in the list
-                try { if (File.Exists(zipPath)) File.Delete(zipPath); } catch { }
+                try
+                {
+                    if (File.Exists(zipPath))
+                    {
+                        File.Delete(zipPath);
+                    }
+                }
+                catch (Exception cleanupEx)
+                {
+                    _logger.LogWarning(cleanupEx, "Failed to clean up partial backup archive {ZipPath}.", zipPath);
+                }
+
+                _logger.LogError(ex, "Backup failed for server {ServerName}.", metadata.Name);
                 throw;
             }
             finally
@@ -92,8 +129,14 @@ namespace PocketMC.Desktop.Services
                 // Always re-enable auto-save if server was running
                 if (isRunning && process != null)
                 {
-                    try { await process.WriteInputAsync("save-on"); }
-                    catch { /* best effort */ }
+                    try
+                    {
+                        await process.WriteInputAsync("save-on");
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to re-enable auto-save after backing up server {ServerName}.", metadata.Name);
+                    }
                 }
             }
 
@@ -179,8 +222,14 @@ namespace PocketMC.Desktop.Services
 
             for (int i = maxToKeep; i < files.Count; i++)
             {
-                try { files[i].Delete(); }
-                catch { /* best effort */ }
+                try
+                {
+                    files[i].Delete();
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to prune old backup {BackupFile}.", files[i].FullName);
+                }
             }
         }
 
@@ -193,4 +242,3 @@ namespace PocketMC.Desktop.Services
         }
     }
 }
-

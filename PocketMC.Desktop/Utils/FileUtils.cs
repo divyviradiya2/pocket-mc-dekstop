@@ -39,6 +39,31 @@ namespace PocketMC.Desktop.Utils
             }
         }
 
+        public static async Task CopyFileAsync(string sourcePath, string destinationPath, bool overwrite = true)
+        {
+            var destinationDirectory = Path.GetDirectoryName(destinationPath);
+            if (!string.IsNullOrEmpty(destinationDirectory))
+            {
+                Directory.CreateDirectory(destinationDirectory);
+            }
+
+            var fileMode = overwrite ? FileMode.Create : FileMode.CreateNew;
+            await using var sourceStream = new FileStream(sourcePath, FileMode.Open, FileAccess.Read, FileShare.Read, 81920, useAsync: true);
+            await using var destinationStream = new FileStream(destinationPath, fileMode, FileAccess.Write, FileShare.None, 81920, useAsync: true);
+            await sourceStream.CopyToAsync(destinationStream);
+        }
+
+        public static Task DeleteFileAsync(string filePath)
+        {
+            return Task.Run(() =>
+            {
+                if (File.Exists(filePath))
+                {
+                    File.Delete(filePath);
+                }
+            });
+        }
+
         /// <summary>
         /// Forcefully deletes a directory, stripping read-only attributes first
         /// to avoid UnauthorizedAccessException on protected files.

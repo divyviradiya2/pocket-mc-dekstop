@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 using PocketMC.Desktop.Models;
 
 namespace PocketMC.Desktop.Services
@@ -8,9 +9,11 @@ namespace PocketMC.Desktop.Services
     public class SettingsManager
     {
         private readonly string _settingsFilePath;
+        private readonly ILogger<SettingsManager>? _logger;
 
-        public SettingsManager()
+        public SettingsManager(ILogger<SettingsManager>? logger = null)
         {
+            _logger = logger;
             _settingsFilePath = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "PocketMC",
@@ -21,30 +24,53 @@ namespace PocketMC.Desktop.Services
         {
             if (!File.Exists(_settingsFilePath))
             {
-                return new AppSettings { AppRootPath = null };
+                return CreateDefaultSettings();
             }
 
             try
             {
                 var content = File.ReadAllText(_settingsFilePath);
-                return JsonSerializer.Deserialize<AppSettings>(content) ?? new AppSettings();
+                return Normalize(JsonSerializer.Deserialize<AppSettings>(content));
             }
-            catch
+            catch (Exception ex)
             {
-                return new AppSettings { AppRootPath = null };
+                _logger?.LogWarning(ex, "Failed to load settings from {SettingsFilePath}. Falling back to defaults.", _settingsFilePath);
+                return CreateDefaultSettings();
             }
         }
 
         public void Save(AppSettings settings)
         {
+            var normalizedSettings = Normalize(settings);
             var directory = Path.GetDirectoryName(_settingsFilePath);
             if (!Directory.Exists(directory) && directory != null)
             {
                 Directory.CreateDirectory(directory);
             }
 
-            var content = JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true });
+            var content = JsonSerializer.Serialize(normalizedSettings, new JsonSerializerOptions { WriteIndented = true });
             File.WriteAllText(_settingsFilePath, content);
+        }
+
+        public string GetPlayitTomlPath(AppSettings? settings = null)
+        {
+            var effectiveSettings = Normalize(settings ?? Load());
+            return Path.Combine(effectiveSettings.PlayitConfigDirectory!, "playit.toml");
+        }
+
+        private AppSettings CreateDefaultSettings()
+        {
+            return Normalize(new AppSettings());
+        }
+
+        private AppSettings Normalize(AppSettings? settings)
+        {
+            settings ??= new AppSettings();
+            settings.PlayitConfigDirectory ??= Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "playit_gg");
+
+            return settings;
         }
     }
 }

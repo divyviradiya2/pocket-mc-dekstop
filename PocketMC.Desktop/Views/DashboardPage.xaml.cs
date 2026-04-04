@@ -5,11 +5,14 @@ using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Wpf.Ui.Controls;
 using PocketMC.Desktop.Utils;
 using PocketMC.Desktop.Services;
 using PocketMC.Desktop.Models;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using MenuItem = System.Windows.Controls.MenuItem;
 using MessageBoxButton = System.Windows.MessageBoxButton;
@@ -23,16 +26,18 @@ namespace PocketMC.Desktop.Views
     public class InstanceCardViewModel : INotifyPropertyChanged
     {
         private readonly InstanceMetadata _metadata;
+        private readonly ServerProcessManager _serverProcessManager;
         private ServerState _state = ServerState.Stopped;
 
-        public InstanceCardViewModel(InstanceMetadata metadata)
+        public InstanceCardViewModel(InstanceMetadata metadata, ServerProcessManager serverProcessManager)
         {
             _metadata = metadata;
+            _serverProcessManager = serverProcessManager;
 
             // Sync initial state from ServerProcessManager
-            if (ServerProcessManager.IsRunning(metadata.Id))
+            if (_serverProcessManager.IsRunning(metadata.Id))
             {
-                var proc = ServerProcessManager.GetProcess(metadata.Id);
+                var proc = _serverProcessManager.GetProcess(metadata.Id);
                 _state = proc?.State ?? ServerState.Stopped;
             }
         }
@@ -43,7 +48,7 @@ namespace PocketMC.Desktop.Views
         public string Description => _metadata.Description;
 
         public bool IsRunning => _state == ServerState.Starting || _state == ServerState.Online || _state == ServerState.Stopping;
-        public bool IsWaitingToRestart => ServerProcessManager.IsWaitingToRestart(Id);
+        public bool IsWaitingToRestart => _serverProcessManager.IsWaitingToRestart(Id);
         public bool ShowRunningControls => IsRunning || IsWaitingToRestart;
         public string StopButtonText => IsWaitingToRestart ? "Abort" : "Stop";
 
@@ -173,97 +178,225 @@ namespace PocketMC.Desktop.Views
 
     public partial class DashboardPage : Page
     {
+        private readonly ApplicationState _applicationState;
         private readonly InstanceManager _instanceManager;
-        private readonly string _appRootPath;
+        private readonly ServerProcessManager _serverProcessManager;
+        private readonly ResourceMonitorService _resourceMonitorService;
+        private readonly PlayitAgentService _playitAgentService;
+        private readonly PlayitApiClient _playitApiClient;
+        private readonly SettingsManager _settingsManager;
+        private readonly IServiceProvider _serviceProvider;
+        private readonly ILogger<DashboardPage> _logger;
         private ObservableCollection<InstanceCardViewModel> _viewModels = new();
+        private bool _isSubscribedToServices;
+        private int _playitHealthRefreshVersion;
 
-        /// <summary>
-        /// App-scoped Playit agent — started once, lives for app lifetime (NET-02).
-        /// Static so other services (TunnelService) can reference it.
-        /// </summary>
-        public static PlayitAgentService? PlayitAgent { get; private set; }
-
-        public DashboardPage(string appRootPath)
+        public DashboardPage(
+            ApplicationState applicationState,
+            InstanceManager instanceManager,
+            ServerProcessManager serverProcessManager,
+            ResourceMonitorService resourceMonitorService,
+            PlayitAgentService playitAgentService,
+            PlayitApiClient playitApiClient,
+            SettingsManager settingsManager,
+            IServiceProvider serviceProvider,
+            ILogger<DashboardPage> logger)
         {
             InitializeComponent();
-            _appRootPath = appRootPath;
-            _instanceManager = new InstanceManager(appRootPath);
+            _applicationState = applicationState;
+            _instanceManager = instanceManager;
+            _serverProcessManager = serverProcessManager;
+            _resourceMonitorService = resourceMonitorService;
+            _playitAgentService = playitAgentService;
+            _playitApiClient = playitApiClient;
+            _settingsManager = settingsManager;
+            _serviceProvider = serviceProvider;
+            _logger = logger;
             LoadInstances();
-            
 
-            // Subscribe to global state changes
-            ServerProcessManager.OnInstanceStateChanged += OnServerStateChanged;
-            ServerProcessManager.OnRestartCountdownTick += OnRestartCountdownTick;
-            MainWindow.GlobalMonitor.OnGlobalMetricsUpdated += UpdateMetrics;
+            Loaded += DashboardPage_Loaded;
+            Unloaded += DashboardPage_Unloaded;
+        }
 
-            // Start Playit agent if not already running (NET-02)
+        private void DashboardPage_Loaded(object sender, RoutedEventArgs e)
+        {
+            if (!_isSubscribedToServices)
+            {
+                _serverProcessManager.OnInstanceStateChanged += OnServerStateChanged;
+                _serverProcessManager.OnRestartCountdownTick += OnRestartCountdownTick;
+                _resourceMonitorService.OnGlobalMetricsUpdated += UpdateMetrics;
+                _playitAgentService.OnClaimUrlReceived += OnClaimUrlReceived;
+                _playitAgentService.OnStateChanged += OnPlayitAgentStateChanged;
+                _playitAgentService.OnTunnelRunning += OnPlayitTunnelRunning;
+                _isSubscribedToServices = true;
+            }
+
             InitializePlayitAgent();
+            _ = RefreshPlayitHealthAsync(TimeSpan.FromSeconds(1), retryCount: 3);
+        }
 
-            // Re-check health whenever we navigate back to this page
-            this.Loaded += (s, e) => _ = CheckPlayitHealthAsync();
+        private void DashboardPage_Unloaded(object sender, RoutedEventArgs e)
+        {
+            if (!_isSubscribedToServices)
+            {
+                return;
+            }
+
+            _serverProcessManager.OnInstanceStateChanged -= OnServerStateChanged;
+            _serverProcessManager.OnRestartCountdownTick -= OnRestartCountdownTick;
+            _resourceMonitorService.OnGlobalMetricsUpdated -= UpdateMetrics;
+            _playitAgentService.OnClaimUrlReceived -= OnClaimUrlReceived;
+            _playitAgentService.OnStateChanged -= OnPlayitAgentStateChanged;
+            _playitAgentService.OnTunnelRunning -= OnPlayitTunnelRunning;
+            _isSubscribedToServices = false;
         }
 
         private void InitializePlayitAgent()
         {
             // 1. Check for binary (D-02)
-            string playitPath = System.IO.Path.Combine(_appRootPath, "tunnel", "playit.exe");
-            if (!System.IO.File.Exists(playitPath))
+            if (!_playitAgentService.IsBinaryAvailable)
             {
                 ShowPlayitStatusBanner("⚠ Playit.gg agent not found", "Agent binary missing. Please download it to enable tunnels.", isBinaryMissing: true);
                 return;
             }
 
             // 2. Start if not already running (NET-02)
-            if (PlayitAgent == null)
-            {
-                PlayitAgent = new PlayitAgentService(_appRootPath, new JobObject());
-
-                // When claim URL is detected, show the guide window (NET-03)
-                PlayitAgent.OnClaimUrlReceived += (sender, claimUrl) =>
-                {
-                    Dispatcher.Invoke(() =>
-                    {
-                        var guideWindow = new PlayitGuideWindow(PlayitAgent, claimUrl);
-                        guideWindow.Owner = Window.GetWindow(this);
-                        guideWindow.Show();
-                    });
-                };
-
-                PlayitAgent.Start();
-            }
-            
-            // 3. Proactive health check (NET-05, D-02)
-            _ = CheckPlayitHealthAsync();
+            _playitAgentService.Start();
         }
 
-        private async Task CheckPlayitHealthAsync()
-        {
-            await Task.Delay(3000); // Wait for agent to initialize/load .toml
-            
-            try
-            {
-                var apiClient = new PlayitApiClient();
-                var result = await apiClient.GetTunnelsAsync();
-
-                Dispatcher.Invoke(() =>
-                {
-                    if (result.IsTokenInvalid)
-                    {
-                        ShowPlayitStatusBanner("⚠ Playit.gg: token invalid", "Token is revoked or missing. Re-link account to restore tunnels.", isTokenInvalid: true);
-                    }
-                    else if (result.Success)
-                    {
-                        PlayitStatusBanner.Visibility = Visibility.Collapsed;
-                    }
-                });
-            }
-            catch { /* Silent fail */ }
-        }
-
-        private void ShowPlayitStatusBanner(string title, string detail, bool isTokenInvalid = false, bool isBinaryMissing = false)
+        private void OnClaimUrlReceived(object? sender, string claimUrl)
         {
             Dispatcher.Invoke(() =>
             {
+                ShowPlayitStatusBanner(
+                    "Playit.gg setup required",
+                    "Approve the agent in your browser to finish linking PocketMC. If you closed the claim page, click Fix to restart the setup flow.");
+                var guideWindow = ActivatorUtilities.CreateInstance<PlayitGuideWindow>(_serviceProvider, claimUrl);
+                guideWindow.Owner = Window.GetWindow(this);
+                guideWindow.Show();
+            });
+        }
+
+        private void OnPlayitAgentStateChanged(object? sender, PlayitAgentState newState)
+        {
+            switch (newState)
+            {
+                case PlayitAgentState.WaitingForClaim:
+                    ShowPlayitStatusBanner(
+                        "Playit.gg setup required",
+                        "Approve the agent in your browser to finish linking PocketMC. If you closed the claim page, click Fix to restart the setup flow.");
+                    break;
+
+                case PlayitAgentState.Connected:
+                    HidePlayitStatusBanner();
+                    _ = RefreshPlayitHealthAsync(TimeSpan.Zero, retryCount: 8);
+                    break;
+
+                case PlayitAgentState.Starting:
+                    _ = RefreshPlayitHealthAsync(TimeSpan.FromSeconds(1), retryCount: 3);
+                    break;
+            }
+        }
+
+        private void OnPlayitTunnelRunning(object? sender, EventArgs e)
+        {
+            HidePlayitStatusBanner();
+            _ = RefreshPlayitHealthAsync(TimeSpan.Zero, retryCount: 8);
+        }
+
+        private async Task RefreshPlayitHealthAsync(TimeSpan initialDelay, int retryCount = 1, TimeSpan? retryDelay = null)
+        {
+            int refreshVersion = Interlocked.Increment(ref _playitHealthRefreshVersion);
+            TimeSpan effectiveRetryDelay = retryDelay ?? TimeSpan.FromSeconds(2);
+
+            if (initialDelay > TimeSpan.Zero)
+            {
+                await Task.Delay(initialDelay);
+            }
+
+            for (int attempt = 1; attempt <= Math.Max(1, retryCount); attempt++)
+            {
+                try
+                {
+                    var result = await _playitApiClient.GetTunnelsAsync();
+                    if (refreshVersion != Volatile.Read(ref _playitHealthRefreshVersion))
+                    {
+                        return;
+                    }
+
+                    if (result.Success)
+                    {
+                        HidePlayitStatusBanner(refreshVersion);
+                        return;
+                    }
+
+                    if (result.RequiresClaim)
+                    {
+                        if (_playitAgentService.State == PlayitAgentState.Connected && attempt < retryCount)
+                        {
+                            await Task.Delay(effectiveRetryDelay);
+                            continue;
+                        }
+
+                        ShowPlayitStatusBanner(
+                            "Playit.gg setup required",
+                            "PocketMC is still waiting for Playit account approval. Finish the claim in your browser, or click Fix to restart the setup flow.",
+                            refreshVersion: refreshVersion);
+                        return;
+                    }
+
+                    if (result.IsTokenInvalid)
+                    {
+                        ShowPlayitStatusBanner(
+                            "⚠ Playit.gg: token invalid",
+                            "The saved Playit credentials were rejected. Click Fix to reset the local token and re-link your account.",
+                            isTokenInvalid: true,
+                            refreshVersion: refreshVersion);
+                        return;
+                    }
+
+                    if (_playitAgentService.State == PlayitAgentState.Connected && attempt < retryCount)
+                    {
+                        await Task.Delay(effectiveRetryDelay);
+                        continue;
+                    }
+
+                    // Non-auth API failures should not leave a stale invalid banner on screen.
+                    HidePlayitStatusBanner(refreshVersion);
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to check Playit health on attempt {Attempt}.", attempt);
+
+                    if (refreshVersion != Volatile.Read(ref _playitHealthRefreshVersion))
+                    {
+                        return;
+                    }
+
+                    if (attempt < retryCount)
+                    {
+                        await Task.Delay(effectiveRetryDelay);
+                        continue;
+                    }
+
+                    if (_playitAgentService.State == PlayitAgentState.Connected)
+                    {
+                        HidePlayitStatusBanner(refreshVersion);
+                    }
+                }
+            }
+        }
+
+        private void ShowPlayitStatusBanner(string title, string detail, bool isTokenInvalid = false, bool isBinaryMissing = false, int? refreshVersion = null)
+        {
+            Dispatcher.Invoke(() =>
+            {
+                if (refreshVersion.HasValue && refreshVersion.Value != Volatile.Read(ref _playitHealthRefreshVersion))
+                {
+                    return;
+                }
+
                 TxtPlayitStatus.Inlines.Clear();
                 TxtPlayitStatus.Inlines.Add(new System.Windows.Documents.Run(title) { FontWeight = FontWeights.Bold });
                 TxtPlayitDetail.Text = detail;
@@ -274,7 +407,20 @@ namespace PocketMC.Desktop.Views
             });
         }
 
-        private void BtnFixPlayit_Click(object sender, RoutedEventArgs e)
+        private void HidePlayitStatusBanner(int? refreshVersion = null)
+        {
+            Dispatcher.Invoke(() =>
+            {
+                if (refreshVersion.HasValue && refreshVersion.Value != Volatile.Read(ref _playitHealthRefreshVersion))
+                {
+                    return;
+                }
+
+                PlayitStatusBanner.Visibility = Visibility.Collapsed;
+            });
+        }
+
+        private async void BtnFixPlayit_Click(object sender, RoutedEventArgs e)
         {
             if (BtnFixPlayit.Tag?.ToString() == "DOWNLOAD")
             {
@@ -284,26 +430,23 @@ namespace PocketMC.Desktop.Views
             else
             {
                 // Reset token flow (D-02)
-                string appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-                string tomlPath = System.IO.Path.Combine(appData, "playit_gg", "playit.toml");
+                string tomlPath = _settingsManager.GetPlayitTomlPath(_applicationState.Settings);
                 
                 try
                 {
-                    if (System.IO.File.Exists(tomlPath)) 
-                        System.IO.File.Delete(tomlPath);
+                    await FileUtils.DeleteFileAsync(tomlPath);
                     
                     // Restart agent to get a new claim URL
-                    PlayitAgent?.Stop();
+                    _playitAgentService.Stop();
                     // Wait a bit and restart
-                    _ = Task.Run(async () => {
-                        await Task.Delay(500);
-                        Dispatcher.Invoke(() => PlayitAgent?.Start());
-                    });
+                    await Task.Delay(500);
+                    _playitAgentService.Start();
                     
-                    PlayitStatusBanner.Visibility = Visibility.Collapsed;
+                    HidePlayitStatusBanner();
                 }
                 catch (Exception ex)
                 {
+                    _logger.LogWarning(ex, "Could not reset the Playit config at {TomlPath}.", tomlPath);
                     System.Windows.MessageBox.Show("Could not reset Playit config: " + ex.Message);
                 }
             }
@@ -321,7 +464,7 @@ namespace PocketMC.Desktop.Views
 
             Application.Current.Dispatcher.Invoke(() =>
             {
-                var dictionary = MainWindow.GlobalMonitor.Metrics;
+                var dictionary = _resourceMonitorService.Metrics;
                 foreach (var vm in _viewModels)
                 {
                     if (dictionary.TryGetValue(vm.Id, out var metric))
@@ -365,16 +508,15 @@ namespace PocketMC.Desktop.Views
             {
                 try
                 {
-                    var apiClient = new PlayitApiClient();
-                    var result = await apiClient.GetTunnelsAsync();
+                    var result = await _playitApiClient.GetTunnelsAsync();
                     if (!result.Success) return;
+
+                    HidePlayitStatusBanner();
 
                     foreach (var vm in missingTunnels)
                     {
-                        string? folderName = FindFolderById(vm.Id);
-                        if (folderName == null) continue;
-
-                        string serverDir = System.IO.Path.Combine(_appRootPath, "servers", folderName);
+                        var serverDir = _instanceManager.GetInstancePath(vm.Id);
+                        if (serverDir == null) continue;
                         string propsPath = System.IO.Path.Combine(serverDir, "server.properties");
                         var props = ServerPropertiesParser.Read(propsPath);
                         int serverPort = 25565;
@@ -388,7 +530,10 @@ namespace PocketMC.Desktop.Views
                         }
                     }
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    _logger.LogDebug(ex, "Background Playit tunnel polling failed.");
+                }
             });
         }
 
@@ -396,7 +541,7 @@ namespace PocketMC.Desktop.Views
         {
             var instances = _instanceManager.GetAllInstances();
             _viewModels = new ObservableCollection<InstanceCardViewModel>(
-                instances.Select(m => new InstanceCardViewModel(m)));
+                instances.Select(m => new InstanceCardViewModel(m, _serverProcessManager)));
             InstanceGrid.ItemsSource = _viewModels;
             TxtEmpty.Visibility = _viewModels.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         }
@@ -444,7 +589,7 @@ namespace PocketMC.Desktop.Views
         {
             var vm = GetViewModel(sender);
             if (vm != null)
-                NavigationService.Navigate(new ServerSettingsPage(vm.Metadata, _appRootPath));
+                NavigationService.Navigate(ActivatorUtilities.CreateInstance<ServerSettingsPage>(_serviceProvider, vm.Metadata));
         }
 
         private void BtnOpenFolder_Click(object sender, RoutedEventArgs e)
@@ -468,7 +613,7 @@ namespace PocketMC.Desktop.Views
                 // Resolve tunnel address before starting (NET-06, NET-09)
                 await ResolveTunnelForInstance(vm);
 
-                ServerProcessManager.StartProcess(vm.Metadata, _appRootPath);
+                _serverProcessManager.StartProcess(vm.Metadata, _applicationState.GetRequiredAppRootPath());
             }
             catch (Exception ex)
             {
@@ -486,26 +631,24 @@ namespace PocketMC.Desktop.Views
         /// </summary>
         private async Task ResolveTunnelForInstance(InstanceCardViewModel vm)
         {
-            if (PlayitAgent == null || 
-               (PlayitAgent.State != PlayitAgentState.Connected && PlayitAgent.State != PlayitAgentState.Starting))
+            if (_playitAgentService.State != PlayitAgentState.Connected &&
+                _playitAgentService.State != PlayitAgentState.Starting)
             {
                 vm.TunnelAddress = null;
                 return;
             }
 
             // Read server port from server.properties
-            string? folderName = FindFolderById(vm.Id);
-            if (folderName == null) return;
+            string? serverDir = _instanceManager.GetInstancePath(vm.Id);
+            if (serverDir == null) return;
 
-            string serverDir = System.IO.Path.Combine(_appRootPath, "servers", folderName);
             string propsPath = System.IO.Path.Combine(serverDir, "server.properties");
             var props = ServerPropertiesParser.Read(propsPath);
             int serverPort = 25565; // Default Minecraft port
             if (props.TryGetValue("server-port", out var portStr) && int.TryParse(portStr, out var parsed))
                 serverPort = parsed;
 
-            var apiClient = new PlayitApiClient();
-            var tunnelService = new TunnelService(apiClient, PlayitAgent);
+            var tunnelService = ActivatorUtilities.CreateInstance<TunnelService>(_serviceProvider);
             var result = await tunnelService.ResolveTunnelAsync(serverPort);
 
             switch (result.Status)
@@ -515,7 +658,7 @@ namespace PocketMC.Desktop.Views
                     break;
 
                 case TunnelResolutionResult.TunnelStatus.LimitReached:
-                    var tunnelResult = await apiClient.GetTunnelsAsync();
+                    var tunnelResult = await _playitApiClient.GetTunnelsAsync();
                     var dialog = new TunnelLimitDialog(tunnelResult.Tunnels);
                     dialog.Owner = Window.GetWindow(this);
                     dialog.ShowDialog();
@@ -523,7 +666,7 @@ namespace PocketMC.Desktop.Views
                     break;
 
                 case TunnelResolutionResult.TunnelStatus.CreationStarted:
-                    var guideWindow = new TunnelCreationGuideWindow(tunnelService, serverPort);
+                    var guideWindow = ActivatorUtilities.CreateInstance<TunnelCreationGuideWindow>(_serviceProvider, serverPort);
                     guideWindow.Owner = Window.GetWindow(this);
                     guideWindow.OnTunnelResolved += (address) => 
                     {
@@ -571,11 +714,11 @@ namespace PocketMC.Desktop.Views
             {
                 if (vm.IsWaitingToRestart)
                 {
-                    ServerProcessManager.AbortRestartDelay(vm.Id);
+                    _serverProcessManager.AbortRestartDelay(vm.Id);
                 }
                 else
                 {
-                    await ServerProcessManager.StopProcessAsync(vm.Id);
+                    await _serverProcessManager.StopProcessAsync(vm.Id);
                 }
             }
             catch (Exception ex)
@@ -593,37 +736,22 @@ namespace PocketMC.Desktop.Views
             var vm = GetViewModel(sender);
             if (vm == null) return;
 
-            var process = ServerProcessManager.GetProcess(vm.Id);
+            var process = _serverProcessManager.GetProcess(vm.Id);
             if (process != null)
             {
-                NavigationService.Navigate(new ServerConsolePage(vm.Metadata, process));
+                NavigationService.Navigate(ActivatorUtilities.CreateInstance<ServerConsolePage>(_serviceProvider, vm.Metadata, process));
             }
         }
 
         private string? FindFolderById(Guid id)
         {
-            var settings = new SettingsManager().Load();
-            if (string.IsNullOrEmpty(settings.AppRootPath)) return null;
-
-            var dirPath = System.IO.Path.Combine(settings.AppRootPath, "servers");
-            if (!System.IO.Directory.Exists(dirPath)) return null;
-
-            foreach (var dir in System.IO.Directory.GetDirectories(dirPath))
-            {
-                var metaFile = System.IO.Path.Combine(dir, ".pocket-mc.json");
-                if (System.IO.File.Exists(metaFile))
-                {
-                    var content = System.IO.File.ReadAllText(metaFile);
-                    if (content.Contains(id.ToString()))
-                        return new System.IO.DirectoryInfo(dir).Name;
-                }
-            }
-            return null;
+            var instancePath = _instanceManager.GetInstancePath(id);
+            return instancePath == null ? null : System.IO.Path.GetFileName(instancePath);
         }
 
         private void BtnNewInstance_Click(object sender, RoutedEventArgs e)
         {
-            var dialog = new NewInstanceDialog(_instanceManager, _appRootPath);
+            var dialog = _serviceProvider.GetRequiredService<NewInstanceDialog>();
             dialog.Owner = Window.GetWindow(this);
             if (dialog.ShowDialog() == true)
             {
@@ -631,7 +759,7 @@ namespace PocketMC.Desktop.Views
             }
         }
 
-        private void DeleteInstance_Click(object sender, RoutedEventArgs e)
+        private async void DeleteInstance_Click(object sender, RoutedEventArgs e)
         {
             InstanceCardViewModel? vm = null;
             if (sender is MenuItem menuItem && menuItem.DataContext is InstanceCardViewModel mvm)
@@ -639,7 +767,7 @@ namespace PocketMC.Desktop.Views
             
             if (vm == null) return;
 
-            if (ServerProcessManager.IsRunning(vm.Id))
+            if (_serverProcessManager.IsRunning(vm.Id))
             {
                 System.Windows.MessageBox.Show(
                     "Cannot delete a running server. Stop it first.",
@@ -660,7 +788,7 @@ namespace PocketMC.Desktop.Views
                 var folder = FindFolderById(vm.Id);
                 if (folder != null)
                 {
-                    _instanceManager.DeleteInstance(folder);
+                    await Task.Run(() => _instanceManager.DeleteInstance(folder));
                     LoadInstances();
                 }
             }
@@ -709,7 +837,7 @@ namespace PocketMC.Desktop.Views
             var vm = m?.DataContext as InstanceCardViewModel;
             if (vm == null) return;
 
-            var process = ServerProcessManager.GetProcess(vm.Id);
+            var process = _serverProcessManager.GetProcess(vm.Id);
             if (process != null && !string.IsNullOrEmpty(process.CrashContext))
             {
                 System.Windows.Clipboard.SetText(process.CrashContext);

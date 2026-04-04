@@ -11,6 +11,14 @@ namespace PocketMC.Desktop.Services
     /// </summary>
     public static class PluginScanner
     {
+        private static readonly Regex ApiVersionRegex = new(
+            @"api-version:\s*['""]?([^\s'""]+)['""]?",
+            RegexOptions.Compiled);
+
+        private static readonly Regex PluginNameRegex = new(
+            @"^name:\s*['""]?([^\s'""]+)['""]?",
+            RegexOptions.Compiled | RegexOptions.Multiline);
+
         /// <summary>
         /// Attempts to read the api-version from plugin.yml inside a JAR file.
         /// Returns null if not found or not a valid plugin JAR.
@@ -26,7 +34,7 @@ namespace PocketMC.Desktop.Services
                 using var reader = new StreamReader(entry.Open());
                 string yaml = reader.ReadToEnd();
 
-                var match = Regex.Match(yaml, @"api-version:\s*['""]?([^\s'""]+)['""]?");
+                var match = ApiVersionRegex.Match(yaml);
                 return match.Success ? match.Groups[1].Value : null;
             }
             catch
@@ -49,7 +57,7 @@ namespace PocketMC.Desktop.Services
                 using var reader = new StreamReader(entry.Open());
                 string yaml = reader.ReadToEnd();
 
-                var match = Regex.Match(yaml, @"^name:\s*['""]?([^\s'""]+)['""]?", RegexOptions.Multiline);
+                var match = PluginNameRegex.Match(yaml);
                 return match.Success ? match.Groups[1].Value : null;
             }
             catch

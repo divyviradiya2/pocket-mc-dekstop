@@ -35,7 +35,10 @@ namespace PocketMC.Desktop.Views
                     UseShellExecute = true
                 });
             }
-            catch { }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Failed to open the Playit dashboard: {ex}");
+            }
 
             Close();
         }
