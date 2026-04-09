@@ -10,6 +10,7 @@
       Background="Transparent">
 
     <Page.Resources>
+        <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter"/>
 
         <Style x:Key="SettingsSidebarItemStyle" TargetType="ListBoxItem">
             <Setter Property="Background" Value="Transparent"/>
@@ -216,8 +217,8 @@
                                 <ui:TextBox Text="{Binding Seed, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,10"/>
 
                                 <TextBlock Text="Level Type:" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,5"/>
-                                <ComboBox SelectedItem="{Binding LevelType}" Margin="0,0,0,10">
-                                    <ComboBoxItem Content="minecraft:normal" IsSelected="True"/>
+                                <ComboBox SelectedValue="{Binding LevelType}" SelectedValuePath="Content" Margin="0,0,0,10">
+                                    <ComboBoxItem Content="minecraft:normal"/>
                                     <ComboBoxItem Content="minecraft:flat"/>
                                     <ComboBoxItem Content="minecraft:large_biomes"/>
                                     <ComboBoxItem Content="minecraft:amplified"/>
@@ -293,17 +294,17 @@
                         <Expander x:Name="ExpanderGameplay" Header="Gameplay" IsExpanded="False" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0">
                             <StackPanel Margin="18,14,18,18">
                                 <TextBlock Text="Gamemode:" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,5"/>
-                                <ComboBox SelectedItem="{Binding Gamemode}" Margin="0,0,0,10">
-                                    <ComboBoxItem Content="survival" IsSelected="True"/>
+                                <ComboBox SelectedValue="{Binding Gamemode}" SelectedValuePath="Content" Margin="0,0,0,10">
+                                    <ComboBoxItem Content="survival"/>
                                     <ComboBoxItem Content="creative"/>
                                     <ComboBoxItem Content="adventure"/>
                                     <ComboBoxItem Content="spectator"/>
                                 </ComboBox>
 
                                 <TextBlock Text="Difficulty:" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,5"/>
-                                <ComboBox SelectedItem="{Binding Difficulty}" Margin="0,0,0,10">
+                                <ComboBox SelectedValue="{Binding Difficulty}" SelectedValuePath="Content" Margin="0,0,0,10">
                                     <ComboBoxItem Content="peaceful"/>
-                                    <ComboBoxItem Content="easy" IsSelected="True"/>
+                                    <ComboBoxItem Content="easy"/>
                                     <ComboBoxItem Content="normal"/>
                                     <ComboBoxItem Content="hard"/>
                                 </ComboBox>

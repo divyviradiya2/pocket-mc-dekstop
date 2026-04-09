@@ -10,12 +10,14 @@ namespace PocketMC.Desktop.Views
     public partial class ServerSettingsPage : Page
     {
         public ServerSettingsViewModel ViewModel { get; }
+        private readonly MouseWheelEventHandler _previewMouseWheelHandler;
 
         public ServerSettingsPage(ServerSettingsViewModel viewModel)
         {
             InitializeComponent();
             ViewModel = viewModel;
             DataContext = ViewModel;
+            _previewMouseWheelHandler = OnSettingsPagePreviewMouseWheel;
 
             // Optional UI logic for tab synchronization and animations can remain here
             Loaded += ServerSettingsPage_Loaded;
@@ -25,13 +27,14 @@ namespace PocketMC.Desktop.Views
 
         private void ServerSettingsPage_Loaded(object sender, RoutedEventArgs e)
         {
-            AddHandler(UIElement.PreviewMouseWheelEvent, new MouseWheelEventHandler(OnSettingsPagePreviewMouseWheel), true);
+            AddHandler(UIElement.PreviewMouseWheelEvent, _previewMouseWheelHandler, true);
             QueueTabTransitionAnimation();
         }
 
         private void ServerSettingsPage_Unloaded(object sender, RoutedEventArgs e)
         {
-            // Remove handlers
+            RemoveHandler(UIElement.PreviewMouseWheelEvent, _previewMouseWheelHandler);
+            ViewModel.Dispose();
         }
 
         private bool _isSynchronizingTabSelection;

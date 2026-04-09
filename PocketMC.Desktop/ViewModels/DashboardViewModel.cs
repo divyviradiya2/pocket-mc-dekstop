@@ -257,7 +257,8 @@ namespace PocketMC.Desktop.ViewModels
         {
             if (parameter is InstanceCardViewModel vm)
             {
-                var settingsPage = ActivatorUtilities.CreateInstance<ServerSettingsPage>(_serviceProvider, vm.Metadata);
+                var settingsViewModel = ActivatorUtilities.CreateInstance<ServerSettingsViewModel>(_serviceProvider, vm.Metadata);
+                var settingsPage = ActivatorUtilities.CreateInstance<ServerSettingsPage>(_serviceProvider, settingsViewModel);
                 _navigationService.NavigateToDetailPage(settingsPage, $"Settings: {vm.Name}");
             }
         }
@@ -266,7 +267,14 @@ namespace PocketMC.Desktop.ViewModels
         {
             if (parameter is InstanceCardViewModel vm)
             {
-                var consolePage = ActivatorUtilities.CreateInstance<ServerConsolePage>(_serviceProvider, vm.Metadata);
+                var process = _serverProcessManager.GetProcess(vm.Id);
+                if (process == null)
+                {
+                    _dialogService.ShowMessage("Unavailable", "Start the server at least once before opening the console.", DialogType.Information);
+                    return;
+                }
+
+                var consolePage = ActivatorUtilities.CreateInstance<ServerConsolePage>(_serviceProvider, vm.Metadata, process);
                 _navigationService.NavigateToDetailPage(consolePage, $"Console: {vm.Name}");
             }
         }

@@ -16,7 +16,7 @@ using PocketMC.Desktop.Views;
 
 namespace PocketMC.Desktop.ViewModels
 {
-    public class ServerSettingsViewModel : ViewModelBase
+    public class ServerSettingsViewModel : ViewModelBase, IDisposable
     {
         private readonly InstanceManager _instanceManager;
         private readonly ServerProcessManager _serverProcessManager;
@@ -30,6 +30,7 @@ namespace PocketMC.Desktop.ViewModels
         private readonly IAppDispatcher _dispatcher;
         private readonly IServiceProvider _serviceProvider;
         private readonly ILogger<ServerSettingsViewModel> _logger;
+        private readonly Action<Guid, ServerState> _instanceStateChangedHandler;
 
         public InstanceMetadata Metadata { get; }
         public string ServerDir { get; }
@@ -217,6 +218,8 @@ namespace PocketMC.Desktop.ViewModels
             _logger = logger;
             ServerDir = _instanceManager.GetInstancePath(metadata.Id) ?? throw new InvalidOperationException();
             _totalRamMb = MemoryHelper.GetTotalPhysicalMemoryMb();
+            _instanceStateChangedHandler = OnInstanceStateChanged;
+            _serverProcessManager.OnInstanceStateChanged += _instanceStateChangedHandler;
 
             SaveCommand = new RelayCommand(_ => SaveConfigurations());
             CancelCommand = new RelayCommand(async _ => await CancelAsync());
@@ -249,7 +252,7 @@ namespace PocketMC.Desktop.ViewModels
         public void LoadAll()
         {
             IsLoading = true;
-            IsRunning = _serverProcessManager.IsRunning(Metadata.Id);
+            UpdateRunningState();
 
             // Load Properties
             MinRam = Metadata.MinRamMb > 0 ? Metadata.MinRamMb : 1024;
@@ -309,6 +312,22 @@ namespace PocketMC.Desktop.ViewModels
 
             IsLoading = false;
             HasUnsavedChanges = false;
+        }
+
+        private void OnInstanceStateChanged(Guid instanceId, ServerState state)
+        {
+            if (instanceId != Metadata.Id)
+            {
+                return;
+            }
+
+            _dispatcher.Invoke(UpdateRunningState);
+        }
+
+        private void UpdateRunningState()
+        {
+            IsRunning = _serverProcessManager.IsRunning(Metadata.Id);
+            CommandManager.InvalidateRequerySuggested();
         }
 
         private void MarkChanged()
@@ -536,8 +555,15 @@ namespace PocketMC.Desktop.ViewModels
         {
             if (path != null && await _dialogService.ShowDialogAsync("Confirm", $"Delete {Path.GetFileName(path)}?", DialogType.Question) == DialogResult.Yes)
             {
-                File.Delete(path);
-                LoadPlugins();
+                try
+                {
+                    await FileUtils.DeleteFileAsync(path);
+                    LoadPlugins();
+                }
+                catch (Exception ex)
+                {
+                    _dialogService.ShowMessage("Error", ex.Message, DialogType.Error);
+                }
             }
         }
 
@@ -566,9 +592,21 @@ namespace PocketMC.Desktop.ViewModels
         {
             if (path != null && await _dialogService.ShowDialogAsync("Confirm", $"Delete {Path.GetFileName(path)}?", DialogType.Question) == DialogResult.Yes)
             {
-                File.Delete(path);
-                LoadMods();
+                try
+                {
+                    await FileUtils.DeleteFileAsync(path);
+                    LoadMods();
+                }
+                catch (Exception ex)
+                {
+                    _dialogService.ShowMessage("Error", ex.Message, DialogType.Error);
+                }
             }
+        }
+
+        public void Dispose()
+        {
+            _serverProcessManager.OnInstanceStateChanged -= _instanceStateChangedHandler;
         }
 
         private void BrowseModrinth(string projectType)
