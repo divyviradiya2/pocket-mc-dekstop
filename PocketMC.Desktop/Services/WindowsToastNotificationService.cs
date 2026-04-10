@@ -35,7 +35,7 @@ public sealed class WindowsToastNotificationService
 
     public void ShowTunnelCreated(int serverPort, string address)
     {
-        ShowToast("Tunnel created", $"Port {serverPort} is now publicly accessible on {address}.");
+        ShowToast("Tunnel created", $"Port {serverPort} is now publicly accessible on {address}. You can now close the browser window.");
     }
 
     private void ShowToast(string title, string body)
