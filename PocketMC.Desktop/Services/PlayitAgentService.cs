@@ -44,11 +44,13 @@ namespace PocketMC.Desktop.Services
         private readonly JobObject _jobObject;
         private readonly ApplicationState _applicationState;
         private readonly SettingsManager _settingsManager;
+        private readonly WindowsToastNotificationService _toastNotificationService;
         private readonly ILogger<PlayitAgentService> _logger;
         private readonly object _restartLock = new();
         private StreamWriter? _logWriter;
         private bool _disposed;
         private bool _claimUrlAlreadyFired;
+        private bool _tunnelRunningAlreadyFired;
         private volatile bool _manualStopRequested;
         private int _unexpectedRestartAttempts;
         private CancellationTokenSource? _restartDelayCancellation;
@@ -82,11 +84,13 @@ namespace PocketMC.Desktop.Services
             ApplicationState applicationState,
             SettingsManager settingsManager,
             JobObject jobObject,
+            WindowsToastNotificationService toastNotificationService,
             ILogger<PlayitAgentService> logger)
         {
             _applicationState = applicationState;
             _settingsManager = settingsManager;
             _jobObject = jobObject;
+            _toastNotificationService = toastNotificationService;
             _logger = logger;
         }
 
@@ -145,6 +149,7 @@ namespace PocketMC.Desktop.Services
             };
 
             _claimUrlAlreadyFired = false;
+            _tunnelRunningAlreadyFired = false;
             _manualStopRequested = false;
             SetState(PlayitAgentState.Starting);
 
@@ -270,10 +275,12 @@ namespace PocketMC.Desktop.Services
                     }
 
                     // Tunnel running detection (NET-04)
-                    if (TunnelRunningRegex.IsMatch(line))
+                    if (TunnelRunningRegex.IsMatch(line) && !_tunnelRunningAlreadyFired)
                     {
+                        _tunnelRunningAlreadyFired = true;
                         SetState(PlayitAgentState.Connected);
                         Log("INFO: Agent connected — tunnel running");
+                        _toastNotificationService.ShowAgentConnected();
                         OnTunnelRunning?.Invoke(this, EventArgs.Empty);
                     }
                 }

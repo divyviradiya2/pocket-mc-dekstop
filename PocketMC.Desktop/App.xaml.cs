@@ -22,6 +22,7 @@ public partial class App : Application
     protected override async void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+        WindowsToastNotificationService.RegisterApplication();
 
         _host = Host.CreateDefaultBuilder()
             .ConfigureLogging(logging =>
@@ -46,6 +47,7 @@ public partial class App : Application
                 services.AddSingleton<DownloaderService>();
                 services.AddSingleton<JavaProvisioningService>();
                 services.AddSingleton<ServerProcessManager>();
+                services.AddSingleton<WindowsToastNotificationService>();
                 services.AddSingleton<ResourceMonitorService>();
                 services.AddSingleton<BackupService>();
                 services.AddSingleton<BackupSchedulerService>();

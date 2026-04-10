@@ -12,6 +12,7 @@ namespace PocketMC.Desktop.Views
     {
         private readonly IAppNavigationService _navigationService;
         private readonly TunnelService _tunnelService;
+        private readonly WindowsToastNotificationService _toastNotificationService;
         private readonly int _serverPort;
         private CancellationTokenSource? _pollingCts;
         private int _closeRequested;
@@ -22,11 +23,13 @@ namespace PocketMC.Desktop.Views
         public TunnelCreationGuidePage(
             IAppNavigationService navigationService,
             TunnelService tunnelService,
+            WindowsToastNotificationService toastNotificationService,
             int serverPort)
         {
             InitializeComponent();
             _navigationService = navigationService;
             _tunnelService = tunnelService;
+            _toastNotificationService = toastNotificationService;
             _serverPort = serverPort;
 
             PortValueRun.Text = serverPort.ToString();
@@ -47,13 +50,12 @@ namespace PocketMC.Desktop.Views
                 {
                     ResolvedAddress = address;
                     OnTunnelResolved?.Invoke(address);
+                    _toastNotificationService.ShowTunnelCreated(_serverPort, address);
                     await Dispatcher.InvokeAsync(() =>
                     {
                         StatusText.Text = $"✓ Tunnel found: {address}";
+                        RequestClose();
                     });
-
-                    await Task.Delay(600, token);
-                    await Dispatcher.InvokeAsync(RequestClose);
                 }
                 else
                 {
