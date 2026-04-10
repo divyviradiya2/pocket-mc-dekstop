@@ -194,7 +194,13 @@ namespace PocketMC.Desktop.ViewModels
                 }
 
                 ApplyLiveMetrics(vm);
-                _ = RefreshTunnelAddressAsync(vm);
+
+                // Pre-populate tunnel address from cache (no polling)
+                var cached = _applicationState.GetTunnelAddress(vm.Id);
+                if (!string.IsNullOrEmpty(cached))
+                {
+                    vm.TunnelAddress = cached;
+                }
             }
         }
 
@@ -223,27 +229,7 @@ namespace PocketMC.Desktop.ViewModels
             vm.PlayerStatus = "0 Players Online";
         }
 
-        private async Task RefreshTunnelAddressAsync(InstanceCardViewModel vm)
-        {
-            var propsFile = Path.Combine(_instanceManager.GetInstancePath(vm.Id)!, "server.properties");
-            var props = ServerPropertiesParser.Read(propsFile);
-            if (props.TryGetValue("server-port", out string? portString) && int.TryParse(portString, out int port))
-            {
-                try
-                {
-                    var res = await _playitApiClient.GetTunnelsAsync();
-                    if (res.Success && res.Tunnels != null)
-                    {
-                        var match = PlayitApiClient.FindTunnelForPort(res.Tunnels, port);
-                        if (match != null)
-                        {
-                            _dispatcher.Invoke(() => vm.TunnelAddress = match.PublicAddress);
-                        }
-                    }
-                }
-                catch (Exception) { }
-            }
-        }
+
 
         private async void StartServer(object? parameter)
         {
@@ -299,6 +285,7 @@ namespace PocketMC.Desktop.ViewModels
                     case TunnelResolutionResult.TunnelStatus.Found:
                         if (!string.IsNullOrWhiteSpace(resolution.PublicAddress))
                         {
+                            _applicationState.SetTunnelAddress(vm.Id, resolution.PublicAddress!);
                             _dispatcher.Invoke(() => vm.TunnelAddress = resolution.PublicAddress);
                         }
                         break;
@@ -309,6 +296,10 @@ namespace PocketMC.Desktop.ViewModels
                             var guidePage = ActivatorUtilities.CreateInstance<TunnelCreationGuidePage>(_serviceProvider, serverPort);
                             guidePage.OnTunnelResolved += address =>
                             {
+                                if (!string.IsNullOrWhiteSpace(address))
+                                {
+                                    _applicationState.SetTunnelAddress(vm.Id, address);
+                                }
                                 _dispatcher.Invoke(() => vm.TunnelAddress = address);
                             };
                             _navigationService.NavigateToDetailPage(guidePage, $"Tunnel Setup: {vm.Name}");
@@ -465,6 +456,12 @@ namespace PocketMC.Desktop.ViewModels
                     ApplyLiveMetrics(vm);
                     _logger.LogError(ex, "Failed to stop server {ServerName}.", vm.Name);
                     _dialogService.ShowMessage("Stop Failed", $"PocketMC could not stop '{vm.Name}' cleanly.\n\n{ex.Message}", DialogType.Error);
+                }
+                finally
+                {
+                    // Clear cached tunnel address on stop
+                    _applicationState.ClearTunnelAddress(vm.Id);
+                    vm.TunnelAddress = null;
                 }
             }
         }
