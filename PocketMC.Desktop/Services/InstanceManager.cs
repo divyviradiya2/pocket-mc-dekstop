@@ -5,6 +5,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Text.Json;
 using System.Threading;
+using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using PocketMC.Desktop.Models;
 using PocketMC.Desktop.Utils;
@@ -13,6 +14,10 @@ namespace PocketMC.Desktop.Services
 {
     public class InstanceManager
     {
+        private const string MetadataFileName = ".pocket-mc.json";
+        private const string EulaFileName = "eula.txt";
+        private static readonly JsonSerializerOptions MetadataJsonOptions = new() { WriteIndented = true };
+
         private readonly ApplicationState _applicationState;
         private readonly ILogger<InstanceManager> _logger;
         private readonly ConcurrentDictionary<Guid, string> _pathCache = new();
@@ -67,7 +72,7 @@ namespace PocketMC.Desktop.Services
 
             foreach (var dir in Directory.GetDirectories(ServersDirectory))
             {
-                var metadataFile = Path.Combine(dir, ".pocket-mc.json");
+                var metadataFile = Path.Combine(dir, MetadataFileName);
                 if (TryReadMetadata(metadataFile, out var metadata) && metadata != null)
                 {
                     _pathCache[metadata.Id] = dir;
@@ -109,8 +114,8 @@ namespace PocketMC.Desktop.Services
                 CreatedAt = DateTime.UtcNow
             };
 
-            var metadataFile = Path.Combine(newInstancePath, ".pocket-mc.json");
-            File.WriteAllText(metadataFile, JsonSerializer.Serialize(metadata, new JsonSerializerOptions { WriteIndented = true }));
+            var metadataFile = Path.Combine(newInstancePath, MetadataFileName);
+            FileUtils.AtomicWriteAllText(metadataFile, JsonSerializer.Serialize(metadata, MetadataJsonOptions));
 
             _pathCache[metadata.Id] = newInstancePath;
             _metadataCache[metadata.Id] = metadata;
@@ -156,7 +161,7 @@ namespace PocketMC.Desktop.Services
             }
 
             // 3. Write updated JSON inside the definitive folder
-            var metadataFile = Path.Combine(currentFolderPath, ".pocket-mc.json");
+            var metadataFile = Path.Combine(currentFolderPath, MetadataFileName);
             if (File.Exists(metadataFile))
             {
                 var content = File.ReadAllText(metadataFile);
@@ -164,42 +169,24 @@ namespace PocketMC.Desktop.Services
                 metadata.Name = newName;
                 metadata.Description = newDescription;
 
-                File.WriteAllText(metadataFile, JsonSerializer.Serialize(metadata, new JsonSerializerOptions { WriteIndented = true }));
+                FileUtils.AtomicWriteAllText(metadataFile, JsonSerializer.Serialize(metadata, MetadataJsonOptions));
                 _pathCache[metadata.Id] = currentFolderPath;
                 _metadataCache[metadata.Id] = metadata;
                 OnInstancesChanged();
             }
         }
 
-        public void DeleteInstance(Guid instanceId)
+        public async Task<bool> DeleteInstanceAsync(Guid instanceId, CancellationToken cancellationToken = default)
         {
+            EnsureDirectory();
+            EnsureCacheLoaded();
+
             if (!_pathCache.TryGetValue(instanceId, out string? folderPath))
             {
-                return;
+                return false;
             }
 
-            bool deleted = false;
-            if (Directory.Exists(folderPath))
-            {
-                for (int i = 0; i < 3; i++)
-                {
-                    try
-                    {
-                        Directory.Delete(folderPath, true);
-                        deleted = true;
-                        break;
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogWarning(ex, "Delete attempt {Attempt} failed for instance folder {FolderPath}.", i + 1, folderPath);
-                        Thread.Sleep(500);
-                    }
-                }
-            }
-            else
-            {
-                deleted = true;
-            }
+            bool deleted = await DeleteDirectoryWithRetryAsync(folderPath, cancellationToken);
 
             if (deleted)
             {
@@ -207,31 +194,17 @@ namespace PocketMC.Desktop.Services
                 _metadataCache.TryRemove(instanceId, out _);
                 OnInstancesChanged();
             }
+
+            return deleted;
         }
 
-        public void DeleteInstance(string folderName)
+        public async Task<bool> DeleteInstanceAsync(string folderName, CancellationToken cancellationToken = default)
         {
+            EnsureDirectory();
+
             var folderPath = Path.Combine(ServersDirectory, folderName);
             Guid? instanceId = ReadInstanceId(folderPath);
-            bool deleted = false;
-            if (Directory.Exists(folderPath))
-            {
-                // Simple retry logic since files might be temporarily locked
-                for (int i = 0; i < 3; i++)
-                {
-                    try
-                    {
-                        Directory.Delete(folderPath, true);
-                        deleted = true;
-                        break;
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogWarning(ex, "Delete attempt {Attempt} failed for instance folder {FolderPath}.", i + 1, folderPath);
-                        Thread.Sleep(500); // Wait 500ms and retry
-                    }
-                }
-            }
+            bool deleted = await DeleteDirectoryWithRetryAsync(folderPath, cancellationToken);
 
             if (deleted && instanceId.HasValue)
             {
@@ -239,6 +212,8 @@ namespace PocketMC.Desktop.Services
                 _metadataCache.TryRemove(instanceId.Value, out _);
                 OnInstancesChanged();
             }
+
+            return deleted;
         }
 
         public void OpenInExplorer(string folderName)
@@ -260,7 +235,7 @@ namespace PocketMC.Desktop.Services
             var folderPath = Path.Combine(ServersDirectory, folderName);
             if (Directory.Exists(folderPath))
             {
-                File.WriteAllText(Path.Combine(folderPath, "eula.txt"), 
+                FileUtils.AtomicWriteAllText(Path.Combine(folderPath, EulaFileName), 
                     "# By changing the setting below to TRUE you are indicating your agreement to our EULA (https://aka.ms/MinecraftEULA).\n" +
                     "eula=true\n");
             }
@@ -268,8 +243,8 @@ namespace PocketMC.Desktop.Services
 
         public void SaveMetadata(InstanceMetadata metadata, string instancePath)
         {
-            var metadataFile = Path.Combine(instancePath, ".pocket-mc.json");
-            File.WriteAllText(metadataFile, JsonSerializer.Serialize(metadata, new JsonSerializerOptions { WriteIndented = true }));
+            var metadataFile = Path.Combine(instancePath, MetadataFileName);
+            FileUtils.AtomicWriteAllText(metadataFile, JsonSerializer.Serialize(metadata, MetadataJsonOptions));
             _pathCache[metadata.Id] = instancePath;
             _metadataCache[metadata.Id] = metadata;
             _cacheInitialized = true;
@@ -314,7 +289,7 @@ namespace PocketMC.Desktop.Services
 
             foreach (var dir in Directory.GetDirectories(ServersDirectory))
             {
-                var metadataFile = Path.Combine(dir, ".pocket-mc.json");
+                var metadataFile = Path.Combine(dir, MetadataFileName);
                 if (TryReadMetadata(metadataFile, out var metadata) && metadata != null)
                 {
                     _pathCache[metadata.Id] = dir;
@@ -346,8 +321,39 @@ namespace PocketMC.Desktop.Services
 
         private Guid? ReadInstanceId(string folderPath)
         {
-            var metadataFile = Path.Combine(folderPath, ".pocket-mc.json");
+            var metadataFile = Path.Combine(folderPath, MetadataFileName);
             return TryReadMetadata(metadataFile, out var metadata) ? metadata?.Id : null;
+        }
+
+        private async Task<bool> DeleteDirectoryWithRetryAsync(string folderPath, CancellationToken cancellationToken)
+        {
+            if (!Directory.Exists(folderPath))
+            {
+                return true;
+            }
+
+            for (int attempt = 1; attempt <= 3; attempt++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                try
+                {
+                    await FileUtils.CleanDirectoryAsync(folderPath, cancellationToken);
+                    return true;
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    _logger.LogWarning(ex, "Delete attempt {Attempt} failed for instance folder {FolderPath}.", attempt, folderPath);
+                    if (attempt == 3)
+                    {
+                        return false;
+                    }
+
+                    await Task.Delay(500, cancellationToken);
+                }
+            }
+
+            return false;
         }
     }
 }

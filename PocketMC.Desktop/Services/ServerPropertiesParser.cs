@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using System.Text.RegularExpressions;
+using PocketMC.Desktop.Utils;
 
 namespace PocketMC.Desktop.Services
 {
@@ -91,7 +92,8 @@ namespace PocketMC.Desktop.Services
                 }
             }
 
-            File.WriteAllLines(filePath, newLines, new UTF8Encoding(false)); // Write without BOM
+            string contents = string.Join(Environment.NewLine, newLines) + Environment.NewLine;
+            FileUtils.AtomicWriteAllText(filePath, contents, new UTF8Encoding(false));
         }
 
         private static string StripInlineComment(string value)

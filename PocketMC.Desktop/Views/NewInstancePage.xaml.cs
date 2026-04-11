@@ -298,7 +298,7 @@ namespace PocketMC.Desktop.Views
             }
             catch (Exception ex)
             {
-                CleanupFailedInstance(createdFolderName, createdInstancePath);
+                await CleanupFailedInstanceAsync(createdFolderName, createdInstancePath);
                 SetCreationState(false);
                 ShowError($"Could not create the instance: {ex.Message}");
                 _logger.LogError(ex, "Failed to create a new instance named {InstanceName}.", TxtName.Text);
@@ -352,19 +352,19 @@ namespace PocketMC.Desktop.Views
         private string GetSelectedServerType() =>
             (CmbServerType.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "Vanilla";
 
-        private void CleanupFailedInstance(string? folderName, string? instancePath)
+        private async Task CleanupFailedInstanceAsync(string? folderName, string? instancePath)
         {
             try
             {
                 if (!string.IsNullOrWhiteSpace(folderName))
                 {
-                    _instanceManager.DeleteInstance(folderName);
+                    await _instanceManager.DeleteInstanceAsync(folderName);
                     return;
                 }
 
                 if (!string.IsNullOrWhiteSpace(instancePath) && Directory.Exists(instancePath))
                 {
-                    Directory.Delete(instancePath, true);
+                    await PocketMC.Desktop.Utils.FileUtils.CleanDirectoryAsync(instancePath);
                 }
             }
             catch (Exception cleanupEx)

@@ -22,6 +22,7 @@ namespace PocketMC.Desktop.ViewModels
     {
         private readonly ApplicationState _applicationState;
         private readonly InstanceManager _instanceManager;
+        private readonly ServerConfigurationService _serverConfigurationService;
         private readonly ServerProcessManager _serverProcessManager;
         private readonly ResourceMonitorService _resourceMonitorService;
         private readonly PlayitAgentService _playitAgentService;
@@ -52,6 +53,7 @@ namespace PocketMC.Desktop.ViewModels
         public DashboardViewModel(
             ApplicationState applicationState,
             InstanceManager instanceManager,
+            ServerConfigurationService serverConfigurationService,
             ServerProcessManager serverProcessManager,
             ResourceMonitorService resourceMonitorService,
             PlayitAgentService playitAgentService,
@@ -65,6 +67,7 @@ namespace PocketMC.Desktop.ViewModels
         {
             _applicationState = applicationState;
             _instanceManager = instanceManager;
+            _serverConfigurationService = serverConfigurationService;
             _serverProcessManager = serverProcessManager;
             _resourceMonitorService = resourceMonitorService;
             _playitAgentService = playitAgentService;
@@ -80,7 +83,7 @@ namespace PocketMC.Desktop.ViewModels
             RefreshInstancesCommand = new RelayCommand(_ => LoadInstances());
             StartServerCommand = new RelayCommand(StartServer);
             StopServerCommand = new RelayCommand(StopServer);
-            DeleteInstanceCommand = new RelayCommand(DeleteInstance);
+            DeleteInstanceCommand = new AsyncRelayCommand(DeleteInstanceAsync);
             OpenFolderCommand = new RelayCommand(OpenFolder);
             CopyCrashReportCommand = new RelayCommand(CopyCrashReport);
             ServerSettingsCommand = new RelayCommand(OpenSettings);
@@ -419,14 +422,8 @@ namespace PocketMC.Desktop.ViewModels
                 return false;
             }
 
-            string propsFile = Path.Combine(instancePath, "server.properties");
-            if (!File.Exists(propsFile))
-            {
-                return false;
-            }
-
-            var props = ServerPropertiesParser.Read(propsFile);
-            return props.TryGetValue("server-port", out string? portString) && int.TryParse(portString, out serverPort);
+            return _serverConfigurationService.TryGetProperty(instancePath, "server-port", out string? portString) &&
+                   int.TryParse(portString, out serverPort);
         }
 
         private bool TryGetServerProperty(Guid instanceId, string key, out string? value)
@@ -435,11 +432,7 @@ namespace PocketMC.Desktop.ViewModels
             string? instancePath = _instanceManager.GetInstancePath(instanceId);
             if (string.IsNullOrWhiteSpace(instancePath)) return false;
 
-            string propsFile = Path.Combine(instancePath, "server.properties");
-            if (!File.Exists(propsFile)) return false;
-
-            var props = ServerPropertiesParser.Read(propsFile);
-            return props.TryGetValue(key, out value);
+            return _serverConfigurationService.TryGetProperty(instancePath, key, out value);
         }
 
         private bool TryBeginTunnelResolution(Guid instanceId)
@@ -499,7 +492,7 @@ namespace PocketMC.Desktop.ViewModels
             }
         }
 
-        private async void DeleteInstance(object? parameter)
+        private async Task DeleteInstanceAsync(object? parameter)
         {
             if (parameter is InstanceCardViewModel vm)
             {
@@ -512,16 +505,18 @@ namespace PocketMC.Desktop.ViewModels
                 var prompt = await _dialogService.ShowDialogAsync("Delete Server", $"Are you sure you want to completely erase the {vm.Name} server? All worlds and files will be permanently deleted.", DialogType.Warning, false);
                 if (prompt == DialogResult.Yes)
                 {
-                    string? path = _instanceManager.GetInstancePath(vm.Id);
-                    if (path != null && Directory.Exists(path))
+                    try
                     {
-                        try 
+                        bool deleted = await _instanceManager.DeleteInstanceAsync(vm.Id);
+                        if (!deleted)
                         {
-                            await PocketMC.Desktop.Utils.FileUtils.CleanDirectoryAsync(path);
+                            _dialogService.ShowMessage("Delete Failed", $"PocketMC could not delete '{vm.Name}'. Close any apps using its files and try again.", DialogType.Error);
                         }
-                        catch { /* Ignore since Directory.Delete will retry next */ }
-                        
-                        _instanceManager.DeleteInstance(vm.Id);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Failed to delete server {ServerName}.", vm.Name);
+                        _dialogService.ShowMessage("Delete Failed", $"PocketMC could not delete '{vm.Name}'.\n\n{ex.Message}", DialogType.Error);
                     }
                 }
             }

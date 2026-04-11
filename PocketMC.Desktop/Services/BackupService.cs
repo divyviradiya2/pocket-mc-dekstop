@@ -7,6 +7,7 @@ using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using PocketMC.Desktop.Models;
+using PocketMC.Desktop.Utils;
 
 namespace PocketMC.Desktop.Services
 {
@@ -238,7 +239,7 @@ namespace PocketMC.Desktop.Services
             var metaFile = Path.Combine(serverDir, ".pocket-mc.json");
             var json = System.Text.Json.JsonSerializer.Serialize(metadata,
                 new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
-            File.WriteAllText(metaFile, json);
+            FileUtils.AtomicWriteAllText(metaFile, json);
         }
     }
 }
