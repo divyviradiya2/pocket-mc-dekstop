@@ -279,21 +279,20 @@
                             <ui:CardExpander.Header>
                                 <StackPanel>
                                     <TextBlock Text="Advanced Properties" FontSize="14" FontWeight="SemiBold"/>
-                                    <TextBlock Text="Edit raw server.properties key-value pairs not exposed above." Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="12" Margin="0,4,0,0"/>
+                                    <TextBlock Text="Edit the complete server.properties file directly." Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="12" Margin="0,4,0,0"/>
                                 </StackPanel>
                             </ui:CardExpander.Header>
                             <StackPanel Margin="16,8,16,16">
-                                <TextBlock Text="Edit direct server.properties values not covered in the UI." FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,0,10"/>
-                                <ui:DataGrid ItemsSource="{Binding AdvancedProperties}" AutoGenerateColumns="False"
-                                          CanUserAddRows="True" CanUserDeleteRows="True" GridLinesVisibility="None"
-                                          HeadersVisibility="Column" SelectionMode="Single"
-                                          Margin="0,0,0,10" MaxHeight="300"
-                                          ScrollViewer.CanContentScroll="False">
-                                    <DataGrid.Columns>
-                                        <DataGridTextColumn Header="Property Key" Binding="{Binding Key}" Width="*" />
-                                        <DataGridTextColumn Header="Value" Binding="{Binding Value}" Width="*" />
-                                    </DataGrid.Columns>
-                                </ui:DataGrid>
+                                <TextBlock Text="This editor saves the raw file exactly as written. If you edit this text, it wins over the individual fields above when you click Save Configurations." FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" Margin="0,0,0,10"/>
+                                <TextBox Text="{Binding RawServerProperties, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                         AcceptsReturn="True"
+                                         AcceptsTab="True"
+                                         TextWrapping="NoWrap"
+                                         VerticalScrollBarVisibility="Auto"
+                                         HorizontalScrollBarVisibility="Auto"
+                                         FontFamily="Consolas"
+                                         FontSize="12"
+                                         MinHeight="320"/>
                             </StackPanel>
                         </ui:CardExpander>
                     </StackPanel>

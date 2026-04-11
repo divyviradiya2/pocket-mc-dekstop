@@ -1,7 +1,7 @@
 using System.Collections.Concurrent;
 using System.IO;
 using Microsoft.Extensions.Logging;
-using Microsoft.Toolkit.Uwp.Notifications;
+using PocketMC.Desktop.Core.Interfaces;
 using PocketMC.Desktop.Models;
 
 namespace PocketMC.Desktop.Services;
@@ -15,6 +15,7 @@ public class ServerProcessManager
     private readonly JobObject _jobObject;
     private readonly InstanceManager _instanceManager;
     private readonly JavaProvisioningService _javaProvisioning;
+    private readonly INotificationService _notificationService;
     private readonly ILogger<ServerProcessManager> _logger;
     private readonly ILoggerFactory _loggerFactory;
     private readonly ConcurrentDictionary<Guid, ServerProcess> _activeProcesses = new();
@@ -29,12 +30,14 @@ public class ServerProcessManager
         JobObject jobObject,
         InstanceManager instanceManager,
         JavaProvisioningService javaProvisioning,
+        INotificationService notificationService,
         ILogger<ServerProcessManager> logger,
         ILoggerFactory loggerFactory)
     {
         _jobObject = jobObject;
         _instanceManager = instanceManager;
         _javaProvisioning = javaProvisioning;
+        _notificationService = notificationService;
         _logger = logger;
         _loggerFactory = loggerFactory;
     }
@@ -130,10 +133,9 @@ public class ServerProcessManager
                 meta.Name,
                 attempts);
 
-            new ToastContentBuilder()
-                .AddText("PocketMC Server Crashed")
-                .AddText($"Server '{meta.Name}' has crashed consecutively {attempts} times and hit the max auto-restart limit.")
-                .Show();
+            _notificationService.ShowInformation(
+                "PocketMC Server Crashed",
+                $"Server '{meta.Name}' has crashed consecutively {attempts} times and hit the max auto-restart limit.");
             return;
         }
 

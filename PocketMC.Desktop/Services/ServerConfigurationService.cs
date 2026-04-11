@@ -1,0 +1,174 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Text;
+using PocketMC.Desktop.Models;
+using PocketMC.Desktop.Utils;
+
+namespace PocketMC.Desktop.Services
+{
+    public sealed class ServerConfigurationService
+    {
+        private const string ServerPropertiesFileName = "server.properties";
+
+        private static readonly HashSet<string> CorePropertyKeys = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "motd",
+            "level-seed",
+            "spawn-protection",
+            "max-players",
+            "server-port",
+            "server-ip",
+            "level-type",
+            "online-mode",
+            "pvp",
+            "white-list",
+            "gamemode",
+            "difficulty",
+            "enable-command-block",
+            "allow-flight",
+            "allow-nether"
+        };
+
+        private readonly InstanceManager _instanceManager;
+
+        public ServerConfigurationService(InstanceManager instanceManager)
+        {
+            _instanceManager = instanceManager;
+        }
+
+        public ServerConfiguration Load(InstanceMetadata metadata, string serverDir)
+        {
+            var props = ServerPropertiesParser.Read(GetPropertiesPath(serverDir));
+            var configuration = new ServerConfiguration
+            {
+                MinRamMb = metadata.MinRamMb > 0 ? metadata.MinRamMb : 1024,
+                MaxRamMb = metadata.MaxRamMb > 0 ? metadata.MaxRamMb : 4096,
+                CustomJavaPath = metadata.CustomJavaPath,
+                AdvancedJvmArgs = metadata.AdvancedJvmArgs,
+                EnableAutoRestart = metadata.EnableAutoRestart,
+                MaxAutoRestarts = metadata.MaxAutoRestarts,
+                AutoRestartDelaySeconds = metadata.AutoRestartDelaySeconds,
+                Motd = props.TryGetValue("motd", out var motd) ? motd : "A Minecraft Server",
+                Seed = props.TryGetValue("level-seed", out var seed) ? seed : "",
+                SpawnProtection = props.TryGetValue("spawn-protection", out var protection) ? protection : "16",
+                MaxPlayers = props.TryGetValue("max-players", out var maxPlayers) ? maxPlayers : "20",
+                ServerPort = props.TryGetValue("server-port", out var port) ? port : "25565",
+                ServerIp = props.TryGetValue("server-ip", out var ip) ? ip : "",
+                LevelType = props.TryGetValue("level-type", out var levelType) ? levelType : "minecraft:normal",
+                OnlineMode = props.TryGetValue("online-mode", out var onlineMode) && onlineMode == "true",
+                Pvp = props.TryGetValue("pvp", out var pvp) ? pvp == "true" : true,
+                WhiteList = props.TryGetValue("white-list", out var whiteList) && whiteList == "true",
+                Gamemode = props.TryGetValue("gamemode", out var gamemode) ? gamemode : "survival",
+                Difficulty = props.TryGetValue("difficulty", out var difficulty) ? difficulty : "easy",
+                AllowCommandBlock = props.TryGetValue("enable-command-block", out var commandBlock) && commandBlock == "true",
+                AllowFlight = props.TryGetValue("allow-flight", out var allowFlight) && allowFlight == "true",
+                AllowNether = props.TryGetValue("allow-nether", out var allowNether) ? allowNether == "true" : true
+            };
+
+            foreach (var property in props)
+            {
+                configuration.AllProperties[property.Key] = property.Value;
+            }
+
+            foreach (var property in props.Where(property => !CorePropertyKeys.Contains(property.Key)))
+            {
+                configuration.AdvancedProperties[property.Key] = property.Value;
+            }
+
+            return configuration;
+        }
+
+        public void Save(InstanceMetadata metadata, string serverDir, ServerConfiguration configuration)
+        {
+            metadata.MinRamMb = configuration.MinRamMb;
+            metadata.MaxRamMb = configuration.MaxRamMb;
+            metadata.EnableAutoRestart = configuration.EnableAutoRestart;
+            metadata.MaxAutoRestarts = configuration.MaxAutoRestarts;
+            metadata.AutoRestartDelaySeconds = configuration.AutoRestartDelaySeconds;
+            metadata.CustomJavaPath = string.IsNullOrWhiteSpace(configuration.CustomJavaPath) ? null : configuration.CustomJavaPath;
+            metadata.AdvancedJvmArgs = string.IsNullOrWhiteSpace(configuration.AdvancedJvmArgs) ? null : configuration.AdvancedJvmArgs.Trim();
+
+            _instanceManager.SaveMetadata(metadata, serverDir);
+
+            var propsFile = GetPropertiesPath(serverDir);
+            var props = ServerPropertiesParser.Read(propsFile);
+
+            props["motd"] = configuration.Motd;
+            if (!string.IsNullOrWhiteSpace(configuration.Seed))
+            {
+                props["level-seed"] = configuration.Seed;
+            }
+
+            props["spawn-protection"] = configuration.SpawnProtection;
+            props["max-players"] = configuration.MaxPlayers;
+            props["server-port"] = configuration.ServerPort;
+
+            if (!string.IsNullOrWhiteSpace(configuration.ServerIp))
+            {
+                props["server-ip"] = configuration.ServerIp;
+            }
+            else
+            {
+                props.Remove("server-ip");
+            }
+
+            props["level-type"] = configuration.LevelType;
+            props["online-mode"] = configuration.OnlineMode ? "true" : "false";
+            props["pvp"] = configuration.Pvp ? "true" : "false";
+            props["white-list"] = configuration.WhiteList ? "true" : "false";
+            props["gamemode"] = configuration.Gamemode;
+            props["difficulty"] = configuration.Difficulty;
+            props["enable-command-block"] = configuration.AllowCommandBlock ? "true" : "false";
+            props["allow-flight"] = configuration.AllowFlight ? "true" : "false";
+            props["allow-nether"] = configuration.AllowNether ? "true" : "false";
+
+            foreach (var key in props.Keys.Where(key => !CorePropertyKeys.Contains(key)).ToList())
+            {
+                props.Remove(key);
+            }
+
+            foreach (var property in configuration.AdvancedProperties)
+            {
+                if (!string.IsNullOrWhiteSpace(property.Key))
+                {
+                    props[property.Key] = property.Value;
+                }
+            }
+
+            ServerPropertiesParser.Write(propsFile, props);
+        }
+
+        public bool TryGetProperty(string serverDir, string key, out string? value)
+        {
+            value = null;
+            string propsFile = GetPropertiesPath(serverDir);
+            if (!File.Exists(propsFile))
+            {
+                return false;
+            }
+
+            var props = ServerPropertiesParser.Read(propsFile);
+            return props.TryGetValue(key, out value);
+        }
+
+        public string LoadRawProperties(string serverDir)
+        {
+            string propsFile = GetPropertiesPath(serverDir);
+            return File.Exists(propsFile)
+                ? File.ReadAllText(propsFile, Encoding.UTF8)
+                : string.Empty;
+        }
+
+        public void SaveRawProperties(string serverDir, string contents)
+        {
+            FileUtils.AtomicWriteAllText(GetPropertiesPath(serverDir), contents, new UTF8Encoding(false));
+        }
+
+        public static bool IsCoreProperty(string key) => CorePropertyKeys.Contains(key);
+
+        private static string GetPropertiesPath(string serverDir) =>
+            Path.Combine(serverDir, ServerPropertiesFileName);
+    }
+}

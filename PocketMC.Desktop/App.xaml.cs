@@ -48,14 +48,17 @@ public partial class App : Application
                 services.AddSingleton<JobObject>();
                 services.AddSingleton<DownloaderService>();
                 services.AddSingleton<JavaProvisioningService>();
-                services.AddSingleton<ServerProcessManager>();
                 services.AddSingleton<WindowsToastNotificationService>();
+                services.AddSingleton<INotificationService>(provider => provider.GetRequiredService<WindowsToastNotificationService>());
+                services.AddSingleton<ServerProcessManager>();
                 services.AddSingleton<ResourceMonitorService>();
                 services.AddSingleton<BackupService>();
                 services.AddSingleton<BackupSchedulerService>();
+                services.AddSingleton<ShellStartupCoordinator>();
                 services.AddSingleton<PlayitApiClient>();
                 services.AddSingleton<PlayitAgentService>();
                 services.AddSingleton<InstanceManager>();
+                services.AddSingleton<ServerConfigurationService>();
                 services.AddSingleton<WorldManager>();
                 services.AddHttpClient<VanillaProvider>(client => client.DefaultRequestHeaders.Add("User-Agent", "PocketMC-Desktop"));
                 services.AddHttpClient<FabricProvider>(client => client.DefaultRequestHeaders.Add("User-Agent", "PocketMC-Desktop"));

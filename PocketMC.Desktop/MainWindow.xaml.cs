@@ -4,55 +4,40 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Reflection;
-using System.IO;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Win32;
+using PocketMC.Desktop.Core.Interfaces;
 using PocketMC.Desktop.Services;
-using PocketMC.Desktop.Models;
 using PocketMC.Desktop.Views;
 using Wpf.Ui;
 using Wpf.Ui.Controls;
 
 namespace PocketMC.Desktop;
 
-public partial class MainWindow : FluentWindow
+public partial class MainWindow : FluentWindow, IStartupShellHost
 {
     private readonly IServiceProvider _serviceProvider;
-    private readonly SettingsManager _settingsManager;
     private readonly ApplicationState _applicationState;
     private readonly ResourceMonitorService _globalMonitor;
-    private readonly BackupSchedulerService _backupScheduler;
-    private readonly ServerProcessManager _serverProcessManager;
-    private readonly JavaProvisioningService _javaProvisioningService;
-    private readonly PlayitAgentService _playitAgentService;
+    private readonly ShellStartupCoordinator _startupCoordinator;
     private readonly ILogger<MainWindow> _logger;
     private Type _lastShellPageType = typeof(DashboardPage);
-private ITitleBarContextSource? _titleBarContextSource;
-private bool _startupServicesStarted;
-    private bool _playitStartupAttempted;
+    private ITitleBarContextSource? _titleBarContextSource;
     private bool _isNavigationLockedToRootSetup;
     private readonly Dictionary<Type, Page> _shellPageCache = new();
 
     public MainWindow(
         IServiceProvider serviceProvider,
-        SettingsManager settingsManager,
         ApplicationState applicationState,
         ResourceMonitorService globalMonitor,
-        BackupSchedulerService backupScheduler,
-        ServerProcessManager serverProcessManager,
-        JavaProvisioningService javaProvisioningService,
-        PlayitAgentService playitAgentService,
+        ShellStartupCoordinator startupCoordinator,
         ILogger<MainWindow> logger)
     {
         _serviceProvider = serviceProvider;
-        _settingsManager = settingsManager;
         _applicationState = applicationState;
         _globalMonitor = globalMonitor;
-        _backupScheduler = backupScheduler;
-        _serverProcessManager = serverProcessManager;
-        _javaProvisioningService = javaProvisioningService;
-        _playitAgentService = playitAgentService;
+        _startupCoordinator = startupCoordinator;
         _logger = logger;
 
         InitializeComponent();
@@ -67,10 +52,9 @@ private bool _startupServicesStarted;
         // Listen for navigation events to update breadcrumb
         RootNavigation.Navigating += OnNavigating;
         RootNavigation.Navigated += OnNavigated;
-Closing += MainWindow_Closing;
+        Closing += MainWindow_Closing;
         _globalMonitor.OnGlobalMetricsUpdated += UpdateGlobalHealth;
-        _playitAgentService.OnClaimUrlReceived += OnPlayitClaimUrlReceived;
-        _playitAgentService.OnTunnelRunning += OnPlayitTunnelRunning;
+        _startupCoordinator.AttachHost(this);
 
         // Win10 fallback: listen for wallpaper changes to refresh simulated Mica
         if (!WallpaperMicaService.IsWindows11OrLater)
@@ -89,7 +73,7 @@ Closing += MainWindow_Closing;
         if (IsShellPageType(pageType))
         {
             _lastShellPageType = pageType!;
-DetachTitleBarContextSource();
+            DetachTitleBarContextSource();
             SyncNavigationSelection(pageType);
         }
         UpdateBreadcrumb(pageType);
@@ -146,6 +130,11 @@ DetachTitleBarContextSource();
 
     public bool NavigateToShellPage(Type pageType, object? parameter = null)
     {
+        if (!Dispatcher.CheckAccess())
+        {
+            return Dispatcher.Invoke(() => NavigateToShellPage(pageType, parameter));
+        }
+
         if (!CanNavigateToPage(pageType))
         {
             return false;
@@ -156,6 +145,11 @@ DetachTitleBarContextSource();
 
     public bool NavigateToDashboard()
     {
+        if (!Dispatcher.CheckAccess())
+        {
+            return Dispatcher.Invoke(NavigateToDashboard);
+        }
+
         if (!CanNavigateToPage(typeof(DashboardPage)))
         {
             return false;
@@ -174,7 +168,7 @@ DetachTitleBarContextSource();
         bool replaced = RootNavigation.ReplaceContent(page, null);
         if (replaced)
         {
-AttachTitleBarContextSource(page as ITitleBarContextSource);
+            AttachTitleBarContextSource(page as ITitleBarContextSource);
             UpdateBreadcrumbLabel(breadcrumbLabel);
         }
 
@@ -203,7 +197,7 @@ AttachTitleBarContextSource(page as ITitleBarContextSource);
         if (replaced)
         {
             _lastShellPageType = pageType;
-DetachTitleBarContextSource();
+            DetachTitleBarContextSource();
             SyncNavigationSelection(pageType);
             UpdateBreadcrumb(pageType);
         }
@@ -597,42 +591,23 @@ DetachTitleBarContextSource();
         if (!WallpaperMicaService.IsWindows11OrLater)
             SystemEvents.UserPreferenceChanged -= OnUserPreferenceChanged;
 
-        _playitAgentService.OnClaimUrlReceived -= OnPlayitClaimUrlReceived;
-        _playitAgentService.OnTunnelRunning -= OnPlayitTunnelRunning;
         RootNavigation.Navigating -= OnNavigating;
-DetachTitleBarContextSource();
-        _backupScheduler.Stop();
+        RootNavigation.Navigated -= OnNavigated;
+        DetachTitleBarContextSource();
         _globalMonitor.OnGlobalMetricsUpdated -= UpdateGlobalHealth;
-        _serverProcessManager.KillAll();
+        _startupCoordinator.Shutdown();
     }
 
     private void Window_Loaded(object sender, RoutedEventArgs e)
     {
-        // Don't apply Mica early unless explicitly loading settings first.
-        // It will be applied during ContinueStartupFlow.
-
-        try
-        {
-            AppSettings settings = _settingsManager.Load();
-            if (string.IsNullOrWhiteSpace(settings.AppRootPath))
-            {
-                ShowRootDirectorySetupPage();
-                return;
-            }
-
-            ContinueStartupFlow(settings);
-        }
-        catch (Exception ex)
-        {
-            HandleStartupFailure(ex);
-        }
+        _startupCoordinator.Start();
     }
 
-    private void ShowRootDirectorySetupPage()
+    public void ShowRootDirectorySetup()
     {
         LockNavigationToRootSetup();
 
-        var setupPage = Microsoft.Extensions.DependencyInjection.ActivatorUtilities.CreateInstance<RootDirectorySetupPage>(_serviceProvider);
+        var setupPage = ActivatorUtilities.CreateInstance<RootDirectorySetupPage>(_serviceProvider);
         setupPage.DirectorySelected += OnRootDirectorySelected;
         setupPage.Unloaded += RootDirectorySetupPage_Unloaded;
 
@@ -661,127 +636,49 @@ DetachTitleBarContextSource();
             setupPage.Unloaded -= RootDirectorySetupPage_Unloaded;
         }
 
-        try
-        {
-            var settings = _settingsManager.Load();
-            settings.AppRootPath = rootPath;
-
-            Directory.CreateDirectory(rootPath);
-            _settingsManager.Save(settings);
-            ContinueStartupFlow(settings);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to persist the PocketMC root directory selection.");
-            System.Windows.MessageBox.Show(
-                $"PocketMC could not save the selected root folder.\n\n{ex.Message}",
-                "Root Folder Error",
-                System.Windows.MessageBoxButton.OK,
-                System.Windows.MessageBoxImage.Error);
-        }
+        _startupCoordinator.CompleteRootDirectorySelection(rootPath);
     }
 
-    private void ContinueStartupFlow(AppSettings settings)
+    public void CompleteRootDirectorySetup()
     {
         UnlockNavigationAfterRootSetup();
-        _applicationState.ApplySettings(settings);
-        
-        RequestMicaUpdate();
-
-        if (!_startupServicesStarted)
-        {
-            _backupScheduler.Start();
-            _javaProvisioningService.StartBackgroundProvisioning();
-            
-            // On first launch, start downloading Playit in the background.
-            if (!settings.HasCompletedFirstLaunch)
-            {
-                _ = _playitAgentService.DownloadAgentAsync();
-            }
-
-            _startupServicesStarted = true;
-        }
-
-        if (!settings.HasCompletedFirstLaunch)
-        {
-            NavigateToShellPage(typeof(TunnelPage));
-        }
-        else
-        {
-            NavigateToDashboard();
-        }
-
-        if (!_playitStartupAttempted)
-        {
-            _playitStartupAttempted = true;
-            TryStartPlayitAgentOnLaunch();
-        }
     }
 
-    private void TryStartPlayitAgentOnLaunch()
+    public bool NavigateToTunnel()
     {
-        try
-        {
-            if (!File.Exists(_applicationState.GetPlayitExecutablePath()))
-            {
-                _logger.LogInformation("Playit agent binary is missing; startup auto-connect was skipped.");
-                return;
-            }
-
-            _playitAgentService.Start();
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Playit auto-connect failed during app startup. The user can retry from the Tunnel page.");
-        }
+        return NavigateToShellPage(typeof(TunnelPage));
     }
 
-    private void OnPlayitClaimUrlReceived(object? sender, string claimUrl)
+    public bool NavigateToPlayitGuide(string claimUrl, bool navigateToDashboardOnCompletion)
     {
-        Dispatcher.Invoke(() =>
+        return Dispatcher.Invoke(() =>
         {
-            bool navigateToDashboardOnCompletion = !_settingsManager.Load().HasCompletedFirstLaunch;
-            var guidePage = Microsoft.Extensions.DependencyInjection.ActivatorUtilities.CreateInstance<PocketMC.Desktop.Views.PlayitGuidePage>(_serviceProvider, claimUrl, navigateToDashboardOnCompletion);
+            var guidePage = ActivatorUtilities.CreateInstance<PlayitGuidePage>(_serviceProvider, claimUrl, navigateToDashboardOnCompletion);
             if (_serviceProvider.GetService(typeof(PocketMC.Desktop.Core.Interfaces.IAppNavigationService)) is PocketMC.Desktop.Core.Interfaces.IAppNavigationService navigationService)
             {
-                navigationService.NavigateToDetailPage(
+                return navigationService.NavigateToDetailPage(
                     guidePage,
                     "Playit.gg Setup",
                     PocketMC.Desktop.Core.Interfaces.DetailRouteKind.PlayitGuide,
                     PocketMC.Desktop.Core.Interfaces.DetailBackNavigation.Tunnel,
                     clearDetailStack: true);
-                return;
             }
 
-            NavigateToDetailPage(guidePage, "Playit.gg Setup");
+            return NavigateToDetailPage(guidePage, "Playit.gg Setup");
         });
     }
 
-    private void OnPlayitTunnelRunning(object? sender, EventArgs e)
+    public void ShowError(string title, string message)
     {
-        Dispatcher.Invoke(() =>
-        {
-            AppSettings settings = _settingsManager.Load();
-            if (settings.HasCompletedFirstLaunch)
-            {
-                return;
-            }
-
-            settings.HasCompletedFirstLaunch = true;
-            _settingsManager.Save(settings);
-            _applicationState.ApplySettings(settings);
-            NavigateToDashboard();
-        });
-    }
-
-    private void HandleStartupFailure(Exception ex)
-    {
-        _logger.LogError(ex, "Failed to initialize the PocketMC startup flow.");
         System.Windows.MessageBox.Show(
-            "PocketMC could not initialize the main workflow. Check the debug log for details.",
-            "Initialization Error",
+            message,
+            title,
             System.Windows.MessageBoxButton.OK,
             System.Windows.MessageBoxImage.Error);
+    }
+
+    public void ShutdownApplication()
+    {
         Application.Current.Shutdown();
     }
 

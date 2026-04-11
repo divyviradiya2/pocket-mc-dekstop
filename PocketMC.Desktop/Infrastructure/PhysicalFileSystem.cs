@@ -1,6 +1,7 @@
 using System.IO;
 using System.Threading.Tasks;
 using PocketMC.Desktop.Core.Interfaces;
+using PocketMC.Desktop.Utils;
 
 namespace PocketMC.Desktop.Infrastructure
 {
@@ -12,7 +13,7 @@ namespace PocketMC.Desktop.Infrastructure
 
         public bool FileExists(string path) => File.Exists(path);
 
-        public Task WriteAllTextAsync(string path, string contents) => File.WriteAllTextAsync(path, contents);
+        public Task WriteAllTextAsync(string path, string contents) => FileUtils.AtomicWriteAllTextAsync(path, contents);
 
         public Task<string> ReadAllTextAsync(string path) => File.ReadAllTextAsync(path);
 

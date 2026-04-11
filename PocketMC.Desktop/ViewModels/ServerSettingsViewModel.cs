@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Specialized;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
@@ -19,6 +20,7 @@ namespace PocketMC.Desktop.ViewModels
     public class ServerSettingsViewModel : ViewModelBase, IDisposable
     {
         private readonly InstanceManager _instanceManager;
+        private readonly ServerConfigurationService _serverConfigurationService;
         private readonly ServerProcessManager _serverProcessManager;
         private readonly WorldManager _worldManager;
         private readonly BackupService _backupService;
@@ -126,6 +128,39 @@ namespace PocketMC.Desktop.ViewModels
 
         public ObservableCollection<PropertyItem> AdvancedProperties { get; } = new();
 
+        private string _rawServerProperties = "";
+        private bool _isLoadingRawServerProperties;
+        private bool _isRawServerPropertiesDirty;
+        public string RawServerProperties
+        {
+            get => _rawServerProperties;
+            set
+            {
+                if (SetProperty(ref _rawServerProperties, value))
+                {
+                    if (!_isLoadingRawServerProperties)
+                    {
+                        _isRawServerPropertiesDirty = true;
+                    }
+
+                    MarkChanged();
+                }
+            }
+        }
+
+        private PropertyItem? _selectedAdvancedProperty;
+        public PropertyItem? SelectedAdvancedProperty
+        {
+            get => _selectedAdvancedProperty;
+            set
+            {
+                if (SetProperty(ref _selectedAdvancedProperty, value))
+                {
+                    CommandManager.InvalidateRequerySuggested();
+                }
+            }
+        }
+
         // Crash
         private bool _enableAutoRestart = false;
         public bool EnableAutoRestart { get => _enableAutoRestart; set { if (SetProperty(ref _enableAutoRestart, value)) MarkChanged(); } }
@@ -180,6 +215,8 @@ namespace PocketMC.Desktop.ViewModels
         public ICommand AddPluginCommand { get; }
         public ICommand DeletePluginCommand { get; }
         public ICommand BrowseModrinthPluginsCommand { get; }
+        public ICommand AddAdvancedPropertyCommand { get; }
+        public ICommand DeleteAdvancedPropertyCommand { get; }
 
         public ICommand AddModCommand { get; }
         public ICommand DeleteModCommand { get; }
@@ -194,6 +231,7 @@ namespace PocketMC.Desktop.ViewModels
         public ServerSettingsViewModel(
             InstanceMetadata metadata,
             InstanceManager instanceManager,
+            ServerConfigurationService serverConfigurationService,
             ServerProcessManager serverProcessManager,
             WorldManager worldManager,
             BackupService backupService,
@@ -208,6 +246,7 @@ namespace PocketMC.Desktop.ViewModels
         {
             Metadata = metadata;
             _instanceManager = instanceManager;
+            _serverConfigurationService = serverConfigurationService;
             _serverProcessManager = serverProcessManager;
             _worldManager = worldManager;
             _backupService = backupService;
@@ -237,6 +276,8 @@ namespace PocketMC.Desktop.ViewModels
             AddPluginCommand = new RelayCommand(async _ => await AddPluginAsync(), _ => !IsRunning && !ShowVanillaWarning);
             DeletePluginCommand = new RelayCommand(async p => await DeletePluginAsync(p as string), _ => !IsRunning);
             BrowseModrinthPluginsCommand = new RelayCommand(_ => BrowseModrinth("project_type:plugin"));
+            AddAdvancedPropertyCommand = new RelayCommand(_ => AddAdvancedProperty());
+            DeleteAdvancedPropertyCommand = new RelayCommand(_ => DeleteSelectedAdvancedProperty(), _ => SelectedAdvancedProperty != null);
 
             AddModCommand = new RelayCommand(async _ => await AddModAsync(), _ => !IsRunning);
             DeleteModCommand = new RelayCommand(async p => await DeleteModAsync(p as string), _ => !IsRunning);
@@ -257,52 +298,42 @@ namespace PocketMC.Desktop.ViewModels
             IsLoading = true;
             UpdateRunningState();
 
-            // Load Properties
-            MinRam = Metadata.MinRamMb > 0 ? Metadata.MinRamMb : 1024;
-            MaxRam = Metadata.MaxRamMb > 0 ? Metadata.MaxRamMb : 4096;
-            JavaPath = Metadata.CustomJavaPath;
-            AdvancedJvmArgs = Metadata.AdvancedJvmArgs;
-            EnableAutoRestart = Metadata.EnableAutoRestart;
-            MaxAutoRestarts = Metadata.MaxAutoRestarts.ToString();
-            AutoRestartDelay = Metadata.AutoRestartDelaySeconds.ToString();
+            var configuration = _serverConfigurationService.Load(Metadata, ServerDir);
+            MinRam = configuration.MinRamMb;
+            MaxRam = configuration.MaxRamMb;
+            JavaPath = configuration.CustomJavaPath;
+            AdvancedJvmArgs = configuration.AdvancedJvmArgs;
+            EnableAutoRestart = configuration.EnableAutoRestart;
+            MaxAutoRestarts = configuration.MaxAutoRestarts.ToString();
+            AutoRestartDelay = configuration.AutoRestartDelaySeconds.ToString();
 
             BackupIntervalHours = Metadata.BackupIntervalHours;
             MaxBackupsToKeep = Metadata.MaxBackupsToKeep;
 
-            var propsFile = Path.Combine(ServerDir, "server.properties");
-            var props = ServerPropertiesParser.Read(propsFile);
-
-            Motd = props.TryGetValue("motd", out var motd) ? motd : "A Minecraft Server";
-            Seed = props.TryGetValue("level-seed", out var seed) ? seed : "";
-            SpawnProtection = props.TryGetValue("spawn-protection", out var prot) ? prot : "16";
-            MaxPlayers = props.TryGetValue("max-players", out var mp) ? mp : "20";
-            ServerPort = props.TryGetValue("server-port", out var port) ? port : "25565";
-            ServerIp = props.TryGetValue("server-ip", out var ip) ? ip : "";
-            LevelType = props.TryGetValue("level-type", out var lt) ? lt : "minecraft:normal";
-            OnlineMode = props.TryGetValue("online-mode", out var om) && om == "true";
-            Pvp = props.TryGetValue("pvp", out var pvp) ? (pvp == "true") : true;
-            WhiteList = props.TryGetValue("white-list", out var wl) && wl == "true";
-            Gamemode = props.TryGetValue("gamemode", out var gm) ? gm : "survival";
-            Difficulty = props.TryGetValue("difficulty", out var dif) ? dif : "easy";
-            AllowBlock = props.TryGetValue("enable-command-block", out var cb) && cb == "true";
-            AllowFlight = props.TryGetValue("allow-flight", out var af) && af == "true";
-            AllowNether = props.TryGetValue("allow-nether", out var an) ? (an == "true") : true;
-
-            var namedKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-            {
-                "motd", "level-seed", "spawn-protection", "max-players", "server-port", "server-ip",
-                "level-type", "online-mode", "pvp", "white-list", "gamemode", "difficulty",
-                "enable-command-block", "allow-flight", "allow-nether"
-            };
+            Motd = configuration.Motd;
+            Seed = configuration.Seed;
+            SpawnProtection = configuration.SpawnProtection;
+            MaxPlayers = configuration.MaxPlayers;
+            ServerPort = configuration.ServerPort;
+            ServerIp = configuration.ServerIp;
+            LevelType = configuration.LevelType;
+            OnlineMode = configuration.OnlineMode;
+            Pvp = configuration.Pvp;
+            WhiteList = configuration.WhiteList;
+            Gamemode = configuration.Gamemode;
+            Difficulty = configuration.Difficulty;
+            AllowBlock = configuration.AllowCommandBlock;
+            AllowFlight = configuration.AllowFlight;
+            AllowNether = configuration.AllowNether;
+            LoadRawServerProperties();
 
             AdvancedProperties.Clear();
-            foreach (var kvp in props.Where(k => !namedKeys.Contains(k.Key)))
+            foreach (var kvp in configuration.AllProperties)
             {
-                var item = new PropertyItem { Key = kvp.Key, Value = kvp.Value };
-                item.PropertyChanged += (s, e) => MarkChanged();
-                AdvancedProperties.Add(item);
+                AdvancedProperties.Add(CreateAdvancedProperty(kvp.Key, kvp.Value));
             }
-            AdvancedProperties.CollectionChanged += (s, e) => MarkChanged();
+            AdvancedProperties.CollectionChanged -= OnAdvancedPropertiesChanged;
+            AdvancedProperties.CollectionChanged += OnAdvancedPropertiesChanged;
 
             LoadIcon();
             LoadWorldTab();
@@ -425,56 +456,99 @@ namespace PocketMC.Desktop.ViewModels
 
         private void SaveConfigurations()
         {
-            Metadata.MinRamMb = (int)MinRam;
-            Metadata.MaxRamMb = (int)MaxRam;
-            Metadata.EnableAutoRestart = EnableAutoRestart;
-            if (int.TryParse(MaxAutoRestarts, out int m)) Metadata.MaxAutoRestarts = m;
-            if (int.TryParse(AutoRestartDelay, out int d)) Metadata.AutoRestartDelaySeconds = d;
-            Metadata.CustomJavaPath = string.IsNullOrWhiteSpace(JavaPath) ? null : JavaPath;
-            Metadata.AdvancedJvmArgs = string.IsNullOrWhiteSpace(AdvancedJvmArgs) ? null : AdvancedJvmArgs.Trim();
+            int maxAutoRestarts = int.TryParse(MaxAutoRestarts, out int parsedMaxRestarts)
+                ? parsedMaxRestarts
+                : Metadata.MaxAutoRestarts;
+            int autoRestartDelaySeconds = int.TryParse(AutoRestartDelay, out int parsedRestartDelay)
+                ? parsedRestartDelay
+                : Metadata.AutoRestartDelaySeconds;
 
-            _instanceManager.SaveMetadata(Metadata, ServerDir);
-
-            var propsFile = Path.Combine(ServerDir, "server.properties");
-            var props = ServerPropertiesParser.Read(propsFile);
-
-            props["motd"] = Motd ?? "";
-            if (!string.IsNullOrWhiteSpace(Seed)) props["level-seed"] = Seed;
-            props["spawn-protection"] = SpawnProtection;
-            props["max-players"] = MaxPlayers;
-            props["server-port"] = ServerPort;
-            if (!string.IsNullOrWhiteSpace(ServerIp)) props["server-ip"] = ServerIp;
-            else props.Remove("server-ip");
-
-            props["level-type"] = LevelType;
-            props["online-mode"] = OnlineMode ? "true" : "false";
-            props["pvp"] = Pvp ? "true" : "false";
-            props["white-list"] = WhiteList ? "true" : "false";
-            props["gamemode"] = Gamemode;
-            props["difficulty"] = Difficulty;
-            props["enable-command-block"] = AllowBlock ? "true" : "false";
-            props["allow-flight"] = AllowFlight ? "true" : "false";
-            props["allow-nether"] = AllowNether ? "true" : "false";
-
-            var namedKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            var configuration = new ServerConfiguration
             {
-                "motd", "level-seed", "spawn-protection", "max-players", "server-port", "server-ip",
-                "level-type", "online-mode", "pvp", "white-list", "gamemode", "difficulty",
-                "enable-command-block", "allow-flight", "allow-nether"
+                MinRamMb = (int)MinRam,
+                MaxRamMb = (int)MaxRam,
+                CustomJavaPath = JavaPath,
+                AdvancedJvmArgs = AdvancedJvmArgs,
+                EnableAutoRestart = EnableAutoRestart,
+                MaxAutoRestarts = maxAutoRestarts,
+                AutoRestartDelaySeconds = autoRestartDelaySeconds,
+                Motd = Motd ?? "",
+                Seed = Seed ?? "",
+                SpawnProtection = SpawnProtection,
+                MaxPlayers = MaxPlayers,
+                ServerPort = ServerPort,
+                ServerIp = ServerIp ?? "",
+                LevelType = LevelType,
+                OnlineMode = OnlineMode,
+                Pvp = Pvp,
+                WhiteList = WhiteList,
+                Gamemode = Gamemode,
+                Difficulty = Difficulty,
+                AllowCommandBlock = AllowBlock,
+                AllowFlight = AllowFlight,
+                AllowNether = AllowNether
             };
-
-            var keysToRemove = props.Keys.Where(k => !namedKeys.Contains(k)).ToList();
-            foreach (var k in keysToRemove) props.Remove(k);
 
             foreach (var item in AdvancedProperties)
             {
-                if (!string.IsNullOrWhiteSpace(item.Key)) props[item.Key] = item.Value;
+                if (!string.IsNullOrWhiteSpace(item.Key) &&
+                    (!ServerConfigurationService.IsCoreProperty(item.Key) || item.IsDirty))
+                {
+                    configuration.AdvancedProperties[item.Key] = item.Value;
+                }
             }
 
-            ServerPropertiesParser.Write(propsFile, props);
+            _serverConfigurationService.Save(Metadata, ServerDir, configuration);
+            if (_isRawServerPropertiesDirty)
+            {
+                _serverConfigurationService.SaveRawProperties(ServerDir, RawServerProperties);
+                _isRawServerPropertiesDirty = false;
+            }
+
             HasUnsavedChanges = false;
 
             _dialogService.ShowMessage("Saved", "Configurations saved successfully.");
+        }
+
+        private void LoadRawServerProperties()
+        {
+            _isLoadingRawServerProperties = true;
+            RawServerProperties = _serverConfigurationService.LoadRawProperties(ServerDir);
+            _isRawServerPropertiesDirty = false;
+            _isLoadingRawServerProperties = false;
+        }
+
+        private void AddAdvancedProperty()
+        {
+            var property = new PropertyItem();
+            AdvancedProperties.Add(property);
+            SelectedAdvancedProperty = property;
+            MarkChanged();
+        }
+
+        private void DeleteSelectedAdvancedProperty()
+        {
+            if (SelectedAdvancedProperty == null)
+            {
+                return;
+            }
+
+            AdvancedProperties.Remove(SelectedAdvancedProperty);
+            SelectedAdvancedProperty = null;
+            MarkChanged();
+            CommandManager.InvalidateRequerySuggested();
+        }
+
+        private PropertyItem CreateAdvancedProperty(string key, string value)
+        {
+            var item = PropertyItem.CreateLoaded(key, value);
+            item.PropertyChanged += (s, e) => MarkChanged();
+            return item;
+        }
+
+        private void OnAdvancedPropertiesChanged(object? sender, NotifyCollectionChangedEventArgs e)
+        {
+            MarkChanged();
         }
 
         private async Task CancelAsync()
@@ -750,8 +824,42 @@ namespace PocketMC.Desktop.ViewModels
     public class PropertyItem : ViewModelBase
     {
         private string _key = "";
-        public string Key { get => _key; set => SetProperty(ref _key, value); }
+        private bool _isLoading;
+        public bool IsDirty { get; private set; }
+
+        public string Key
+        {
+            get => _key;
+            set
+            {
+                if (SetProperty(ref _key, value) && !_isLoading)
+                {
+                    IsDirty = true;
+                }
+            }
+        }
+
         private string _value = "";
-        public string Value { get => _value; set => SetProperty(ref _value, value); }
+        public string Value
+        {
+            get => _value;
+            set
+            {
+                if (SetProperty(ref _value, value) && !_isLoading)
+                {
+                    IsDirty = true;
+                }
+            }
+        }
+
+        public static PropertyItem CreateLoaded(string key, string value)
+        {
+            var item = new PropertyItem { _isLoading = true };
+            item.Key = key;
+            item.Value = value;
+            item.IsDirty = false;
+            item._isLoading = false;
+            return item;
+        }
     }
 }

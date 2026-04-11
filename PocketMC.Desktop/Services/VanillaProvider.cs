@@ -8,6 +8,7 @@ using System.Text.Json.Nodes;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using PocketMC.Desktop.Models;
+using PocketMC.Desktop.Utils;
 
 namespace PocketMC.Desktop.Services
 {
@@ -102,7 +103,7 @@ namespace PocketMC.Desktop.Services
                 ValidateManifest(manifestJson);
 
                 Directory.CreateDirectory(Path.GetDirectoryName(cachePath)!);
-                await File.WriteAllTextAsync(cachePath, manifestJson);
+                await FileUtils.AtomicWriteAllTextAsync(cachePath, manifestJson);
                 return manifestJson;
             }
             catch (Exception ex) when (allowStaleCacheFallback)

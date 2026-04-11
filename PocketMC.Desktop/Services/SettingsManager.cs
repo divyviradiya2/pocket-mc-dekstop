@@ -3,6 +3,7 @@ using System.IO;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using PocketMC.Desktop.Models;
+using PocketMC.Desktop.Utils;
 
 namespace PocketMC.Desktop.Services
 {
@@ -49,7 +50,7 @@ namespace PocketMC.Desktop.Services
             }
 
             var content = JsonSerializer.Serialize(normalizedSettings, new JsonSerializerOptions { WriteIndented = true });
-            File.WriteAllText(_settingsFilePath, content);
+            FileUtils.AtomicWriteAllText(_settingsFilePath, content);
         }
 
         public string GetPlayitTomlPath(AppSettings? settings = null)

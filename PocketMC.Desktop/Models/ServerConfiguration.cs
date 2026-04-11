@@ -1,0 +1,35 @@
+using System;
+using System.Collections.Generic;
+
+namespace PocketMC.Desktop.Models
+{
+    public sealed class ServerConfiguration
+    {
+        public int MinRamMb { get; set; } = 1024;
+        public int MaxRamMb { get; set; } = 4096;
+        public string? CustomJavaPath { get; set; }
+        public string? AdvancedJvmArgs { get; set; }
+        public bool EnableAutoRestart { get; set; }
+        public int MaxAutoRestarts { get; set; } = 3;
+        public int AutoRestartDelaySeconds { get; set; } = 10;
+
+        public string Motd { get; set; } = "A Minecraft Server";
+        public string Seed { get; set; } = "";
+        public string SpawnProtection { get; set; } = "16";
+        public string MaxPlayers { get; set; } = "20";
+        public string ServerPort { get; set; } = "25565";
+        public string ServerIp { get; set; } = "";
+        public string LevelType { get; set; } = "minecraft:normal";
+        public bool OnlineMode { get; set; }
+        public bool Pvp { get; set; } = true;
+        public bool WhiteList { get; set; }
+        public string Gamemode { get; set; } = "survival";
+        public string Difficulty { get; set; } = "easy";
+        public bool AllowCommandBlock { get; set; }
+        public bool AllowFlight { get; set; }
+        public bool AllowNether { get; set; } = true;
+
+        public Dictionary<string, string> AdvancedProperties { get; } = new(StringComparer.OrdinalIgnoreCase);
+        public Dictionary<string, string> AllProperties { get; } = new(StringComparer.OrdinalIgnoreCase);
+    }
+}
