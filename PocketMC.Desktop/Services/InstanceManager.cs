@@ -171,6 +171,44 @@ namespace PocketMC.Desktop.Services
             }
         }
 
+        public void DeleteInstance(Guid instanceId)
+        {
+            if (!_pathCache.TryGetValue(instanceId, out string? folderPath))
+            {
+                return;
+            }
+
+            bool deleted = false;
+            if (Directory.Exists(folderPath))
+            {
+                for (int i = 0; i < 3; i++)
+                {
+                    try
+                    {
+                        Directory.Delete(folderPath, true);
+                        deleted = true;
+                        break;
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Delete attempt {Attempt} failed for instance folder {FolderPath}.", i + 1, folderPath);
+                        Thread.Sleep(500);
+                    }
+                }
+            }
+            else
+            {
+                deleted = true;
+            }
+
+            if (deleted)
+            {
+                _pathCache.TryRemove(instanceId, out _);
+                _metadataCache.TryRemove(instanceId, out _);
+                OnInstancesChanged();
+            }
+        }
+
         public void DeleteInstance(string folderName)
         {
             var folderPath = Path.Combine(ServersDirectory, folderName);
@@ -187,7 +225,7 @@ namespace PocketMC.Desktop.Services
                         deleted = true;
                         break;
                     }
-                    catch (IOException ex)
+                    catch (Exception ex)
                     {
                         _logger.LogWarning(ex, "Delete attempt {Attempt} failed for instance folder {FolderPath}.", i + 1, folderPath);
                         Thread.Sleep(500); // Wait 500ms and retry

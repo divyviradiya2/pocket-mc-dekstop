@@ -515,10 +515,14 @@ namespace PocketMC.Desktop.ViewModels
                     string? path = _instanceManager.GetInstancePath(vm.Id);
                     if (path != null && Directory.Exists(path))
                     {
-                        await PocketMC.Desktop.Utils.FileUtils.CleanDirectoryAsync(path);
-                        Directory.Delete(path, true);
+                        try 
+                        {
+                            await PocketMC.Desktop.Utils.FileUtils.CleanDirectoryAsync(path);
+                        }
+                        catch { /* Ignore since Directory.Delete will retry next */ }
+                        
+                        _instanceManager.DeleteInstance(vm.Id);
                     }
-                    LoadInstances();
                 }
             }
         }
