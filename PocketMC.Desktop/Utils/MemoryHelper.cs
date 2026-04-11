@@ -28,9 +28,12 @@ namespace PocketMC.Desktop.Utils
         [return: MarshalAs(UnmanagedType.Bool)]
         private static extern bool GlobalMemoryStatusEx([In, Out] MEMORYSTATUSEX lpBuffer);
 
-        public static ulong GetTotalPhysicalMemoryMb()
+        public static ulong GetTotalPhysicalMemoryMb() => GetMemoryMetric(m => m.ullTotalPhys);
+
+        public static ulong GetAvailablePhysicalMemoryMb() => GetMemoryMetric(m => m.ullAvailPhys);
+
+        private static ulong GetMemoryMetric(Func<MEMORYSTATUSEX, ulong> selector)
         {
-            // fallback to GC info if Windows API fails or is unavailable on cross-platform
             try
             {
                 if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
@@ -38,17 +41,14 @@ namespace PocketMC.Desktop.Utils
                     var memStatus = new MEMORYSTATUSEX();
                     if (GlobalMemoryStatusEx(memStatus))
                     {
-                        return memStatus.ullTotalPhys / (1024 * 1024);
+                        return selector(memStatus) / (1024 * 1024);
                     }
                 }
             }
-            catch
-            {
-                // Ignore exception, fallback
-            }
+            catch { }
 
-            // Fallback for non-windows or if restricted
             var gcMemoryInfo = GC.GetGCMemoryInfo();
+            // Fallback: This is not quite "System available", but it's the best we have cross-platform
             return (ulong)gcMemoryInfo.TotalAvailableMemoryBytes / (1024 * 1024);
         }
     }

@@ -12,6 +12,8 @@ namespace PocketMC.Desktop.Models
         public bool EnableAutoRestart { get; set; }
         public int MaxAutoRestarts { get; set; } = 3;
         public int AutoRestartDelaySeconds { get; set; } = 10;
+        public int BackupIntervalHours { get; set; } = 0;
+        public int MaxBackupsToKeep { get; set; } = 10;
 
         public string Motd { get; set; } = "A Minecraft Server";
         public string Seed { get; set; } = "";

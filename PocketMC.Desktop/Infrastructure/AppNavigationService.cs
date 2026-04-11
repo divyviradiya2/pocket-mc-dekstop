@@ -12,21 +12,21 @@ namespace PocketMC.Desktop.Infrastructure
     {
         private readonly ControlledNavigationStack _detailStack = new();
         private readonly List<DetailPageEntry> _detailPages = new();
-        private MainWindow? _mainWindow;
+        private INavigationHost? _navigationHost;
 
-        public void Initialize(MainWindow mainWindow)
+        public void Initialize(INavigationHost navigationHost)
         {
-            _mainWindow = mainWindow;
+            _navigationHost = navigationHost;
         }
 
         public bool NavigateToDashboard()
         {
-            if (_mainWindow == null)
+            if (_navigationHost == null)
             {
                 return false;
             }
 
-            bool navigated = _mainWindow.NavigateToDashboard();
+            bool navigated = _navigationHost.NavigateToDashboard();
             if (navigated)
             {
                 ClearDetailStack();
@@ -37,12 +37,12 @@ namespace PocketMC.Desktop.Infrastructure
 
         public bool NavigateToTunnel()
         {
-            if (_mainWindow == null)
+            if (_navigationHost == null)
             {
                 return false;
             }
 
-            bool navigated = _mainWindow.NavigateToShellPage(typeof(TunnelPage));
+            bool navigated = _navigationHost.NavigateToShellPage(typeof(TunnelPage));
             if (navigated)
             {
                 ClearDetailStack();
@@ -53,12 +53,12 @@ namespace PocketMC.Desktop.Infrastructure
 
         public bool NavigateToShellPage(Type pageType)
         {
-            if (_mainWindow == null)
+            if (_navigationHost == null)
             {
                 return false;
             }
 
-            bool navigated = _mainWindow.NavigateToShellPage(pageType);
+            bool navigated = _navigationHost.NavigateToShellPage(pageType);
             if (navigated)
             {
                 ClearDetailStack();
@@ -74,14 +74,14 @@ namespace PocketMC.Desktop.Infrastructure
             DetailBackNavigation backNavigation,
             bool clearDetailStack = false)
         {
-            if (_mainWindow == null)
+            if (_navigationHost == null)
             {
                 return false;
             }
 
             ValidateDetailTransition(routeKind, backNavigation);
 
-            bool navigated = _mainWindow.NavigateToDetailPage(page, breadcrumbLabel);
+            bool navigated = _navigationHost.NavigateToDetailPage(page, breadcrumbLabel);
             if (!navigated)
             {
                 return false;
@@ -103,7 +103,7 @@ namespace PocketMC.Desktop.Infrastructure
 
         public bool NavigateBack()
         {
-            if (_mainWindow == null)
+            if (_navigationHost == null)
             {
                 return false;
             }
@@ -118,16 +118,16 @@ namespace PocketMC.Desktop.Infrastructure
 
             if (result.TargetsShellRoute)
             {
-                return _mainWindow.NavigateToShellPage(MapShellPageType(result.TargetRoute));
+                return _navigationHost.NavigateToShellPage(MapShellPageType(result.TargetRoute));
             }
 
             DetailPageEntry? targetEntry = _detailPages.LastOrDefault(entry => entry.EntryId == result.TargetEntryId);
             if (targetEntry == null)
             {
-                return _mainWindow.NavigateToDashboard();
+                return _navigationHost.NavigateToDashboard();
             }
 
-            return _mainWindow.NavigateToDetailPage(targetEntry.Page, targetEntry.BreadcrumbLabel);
+            return _navigationHost.NavigateToDetailPage(targetEntry.Page, targetEntry.BreadcrumbLabel);
         }
 
         private void ValidateDetailTransition(DetailRouteKind routeKind, DetailBackNavigation backNavigation)

@@ -5,16 +5,18 @@
       xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
       xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
       mc:Ignorable="d" 
-      d:DesignHeight="700" d:DesignWidth="800"
+      d:DesignHeight="1200" d:DesignWidth="950"
       Title="Server Settings"
       Background="Transparent">
 
     <Page.Resources>
-        <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter"/>
+        <BooleanToVisibilityConverter x:Key="VisibleIfTrue"/>
+        <localUtils:InverseBooleanToVisibilityConverter x:Key="InvertedVisibilityConverter" xmlns:localUtils="clr-namespace:PocketMC.Desktop.Utils"/>
+        <localUtils:InverseBooleanConverter x:Key="InvertedBooleanConverter" xmlns:localUtils="clr-namespace:PocketMC.Desktop.Utils"/>
 
-
+        <!-- Premium Styles -->
         <Style TargetType="{x:Type ui:TextBox}" BasedOn="{StaticResource {x:Type ui:TextBox}}">
-            <Setter Property="MinHeight" Value="40"/>
+            <Setter Property="MinHeight" Value="38"/>
             <Setter Property="FontSize" Value="13"/>
         </Style>
 
@@ -24,485 +26,366 @@
             <Setter Property="FontSize" Value="13"/>
         </Style>
 
-        <Style TargetType="{x:Type ui:Button}" BasedOn="{StaticResource {x:Type ui:Button}}">
-            <Setter Property="MinHeight" Value="38"/>
-            <Setter Property="Padding" Value="14,8"/>
+        <Style TargetType="TextBlock" x:Key="SettingsHeader">
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}"/>
+            <Setter Property="Margin" Value="0,0,0,8"/>
         </Style>
 
-
-
-        <Style TargetType="DataGridCell">
-            <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="Padding" Value="8,6"/>
+        <Style TargetType="TextBlock" x:Key="SettingsSubtext">
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}"/>
+            <Setter Property="Margin" Value="0,0,0,5"/>
         </Style>
     </Page.Resources>
 
     <Grid Margin="28,20,28,24" VerticalAlignment="Stretch">
         <DockPanel LastChildFill="True">
 
-
-            <!-- Header -->
-            <StackPanel DockPanel.Dock="Top" Margin="0,0,0,20">
-            <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                <ui:Button Icon="{ui:SymbolIcon ArrowLeft24}" 
-                           Appearance="Transparent" 
-                           Command="{Binding CancelCommand}"
-                           Margin="0,0,12,0" 
-                           Padding="8,6" />
-                <ui:TextBlock FontTypography="Title"
-                              Text="Server Settings"
-                              Foreground="{DynamicResource TextFillColorPrimaryBrush}"
-                              VerticalAlignment="Center"/>
+            <!-- Title Section -->
+            <StackPanel DockPanel.Dock="Top" Margin="0,0,0,24">
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                    <ui:Button Icon="{ui:SymbolIcon ArrowLeft24}" 
+                               Appearance="Transparent" 
+                               Command="{Binding CancelCommand}"
+                               Margin="0,0,12,0" 
+                               Padding="6" />
+                    <ui:TextBlock FontTypography="Title"
+                                  Text="Server Configurations"
+                                  Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                  VerticalAlignment="Center"/>
+                </StackPanel>
+                <TextBlock Text="Modify your instance setup, install addons, configure automated tasks and manage world files."
+                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                           FontSize="13"
+                           Margin="48,0,0,0"
+                           TextWrapping="Wrap"/>
             </StackPanel>
-            <TextBlock Text="Configure properties, worlds, plugins, mods, backups, and crash recovery in PocketMC's native workflow."
-                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                       FontSize="13"
-                       Margin="46,0,0,0"
-                       TextWrapping="Wrap"/>
-        </StackPanel>
 
-        <!-- Footer Actions (pinned at bottom) -->
-        <Border DockPanel.Dock="Bottom"
-                Margin="0,12,0,0"
-                Padding="16,14"
-                Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
-                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
-                BorderThickness="0,1,0,0"
-                CornerRadius="0,0,8,8">
-            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                <ui:Button Content="Cancel" Appearance="Secondary" Margin="0,0,10,0" Command="{Binding CancelCommand}"/>
-                <ui:Button Content="Save Configurations" Appearance="Primary" Command="{Binding SaveCommand}"/>
-            </StackPanel>
-        </Border>
-
-        <!-- Sidebar Layout (Fill) -->
-        <Grid>
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="230"/>
-                <ColumnDefinition Width="20"/>
-                <ColumnDefinition Width="*"/>
-            </Grid.ColumnDefinitions>
-
-            <!-- Side Bar (Category List) -->
-            <!-- Side Bar (Category List) -->
-            <ui:NavigationView Grid.Column="0"
-                               x:Name="SidebarList"
-                               PaneDisplayMode="Left"
-                               IsPaneToggleVisible="False"
-                               IsBackButtonVisible="Collapsed">
-                <ui:NavigationView.MenuItems>
-                    <ui:NavigationViewItem Content="Properties" Icon="{ui:SymbolIcon Settings24}" Click="NavItem_Click" IsActive="True"/>
-                    <ui:NavigationViewItem Content="Worlds" Icon="{ui:SymbolIcon Folder24}" Click="NavItem_Click"/>
-                    <ui:NavigationViewItem Content="Plugins" Icon="{ui:SymbolIcon Add24}" Click="NavItem_Click"/>
-                    <ui:NavigationViewItem Content="Mods" Icon="{ui:SymbolIcon FolderZip24}" Click="NavItem_Click"/>
-                    <ui:NavigationViewItem Content="Backups" Icon="{ui:SymbolIcon ArrowDownload24}" Click="NavItem_Click"/>
-                    <ui:NavigationViewItem Content="Crash &amp; Restart" Icon="{ui:SymbolIcon ArrowSync24}" Click="NavItem_Click"/>
-                </ui:NavigationView.MenuItems>
-            </ui:NavigationView>
-
-            <!-- Content Area (Headerless TabControl) -->
-            <Border x:Name="ContentAreaCard" 
-                    Grid.Column="2" 
-                    Padding="18" 
-                    VerticalAlignment="Stretch"
-                    RenderTransformOrigin="0.5,0">
-            <Border.RenderTransform>
-                <TranslateTransform/>
-            </Border.RenderTransform>
-            <TabControl x:Name="MainTabControl" 
-                        Background="Transparent" 
-                        BorderThickness="0" 
-                        Margin="0"
-                        VerticalAlignment="Stretch"
-                        VerticalContentAlignment="Stretch">
-                <TabControl.Resources>
-                    <Style TargetType="TabPanel">
-                        <Setter Property="Visibility" Value="Collapsed"/>
-                    </Style>
-                </TabControl.Resources>
-            
-            <!-- ═══════════════════════ TAB 1: PROPERTIES ═══════════════════════ -->
-            <TabItem Header="  Properties  " Foreground="White">
-                <ScrollViewer x:Name="PropertiesScrollViewer" VerticalScrollBarVisibility="Auto" Padding="0,0,16,0" Background="Transparent">
-                    <StackPanel x:Name="SettingsPanel" Background="Transparent">
-                        <!-- General Settings -->
-                        <ui:CardExpander x:Name="ExpanderGeneral" IsExpanded="False" Icon="{ui:SymbolIcon Settings24}" Margin="0,0,0,12">
-                            <ui:CardExpander.Header>
-                                <StackPanel>
-                                    <TextBlock Text="General" FontSize="14" FontWeight="SemiBold"/>
-                                    <TextBlock Text="Server icon, MOTD, Java runtime, and JVM arguments." Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="12" Margin="0,4,0,0"/>
-                                </StackPanel>
-                            </ui:CardExpander.Header>
-                            <StackPanel Margin="16,8,16,16">
-                                <TextBlock Text="Server Icon (64x64 PNG):" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,5"/>
-                                <ui:Button Content="Select Icon" Appearance="Secondary" Command="{Binding BrowseIconCommand}" Width="120" HorizontalAlignment="Left"/>
-                                <Image Source="{Binding ServerIcon}" Width="64" Height="64" HorizontalAlignment="Left" Margin="0,10,0,10" Stretch="UniformToFill"/>
-                                
-                                <TextBlock Text="MOTD (Message of the Day):" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,15,0,5"/>
-                                <ui:TextBox Text="{Binding Motd, UpdateSourceTrigger=PropertyChanged}" />
-                                <TextBlock Text="{Binding Motd}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,5,0,10"/>
-
-                                <TextBlock Text="Java Runtime (Override Path):" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,15,0,5"/>
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="Auto"/>
-                                    </Grid.ColumnDefinitions>
-                                    <ui:TextBox Text="{Binding JavaPath, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="Default (PocketMC-Desktop Runtimes)"/>
-                                    <ui:Button Grid.Column="1" Content="Browse" Appearance="Secondary" Command="{Binding BrowseJavaCommand}" Margin="8,0,0,0" Cursor="Hand"/>
-                                </Grid>
-                                <TextBlock Text="Note: Leave blank to use PocketMC's automatic internal Java versioning." FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,5,0,12"/>
-
-                                <TextBlock Text="Advanced JVM Arguments:" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,5,0,5"/>
-                                <ui:TextBox Text="{Binding AdvancedJvmArgs, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="96"/>
-                                <TextBlock Text="One flag per token, for example: -XX:+UseG1GC -XX:MaxGCPauseMillis=200"
-                                           FontSize="11"
-                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                           Margin="0,5,0,0"/>
-                            </StackPanel>
-                        </ui:CardExpander>
-
-                        <!-- World Properties -->
-                        <ui:CardExpander x:Name="ExpanderWorld" IsExpanded="False" Icon="{ui:SymbolIcon Globe24}" Margin="0,0,0,12">
-                            <ui:CardExpander.Header>
-                                <StackPanel>
-                                    <TextBlock Text="World" FontSize="14" FontWeight="SemiBold"/>
-                                    <TextBlock Text="Level seed, world type, and spawn protection." Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="12" Margin="0,4,0,0"/>
-                                </StackPanel>
-                            </ui:CardExpander.Header>
-                            <StackPanel Margin="16,8,16,16">
-                                <TextBlock Text="Level Seed (Leave blank for random):" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,5"/>
-                                <ui:TextBox Text="{Binding Seed, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,10"/>
-
-                                <TextBlock Text="Level Type:" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,5"/>
-                                <ComboBox ItemsSource="{Binding LevelTypes}" SelectedItem="{Binding LevelType, Mode=TwoWay}" Margin="0,0,0,10" />
-
-                                <TextBlock Text="Spawn Protection Area:" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,5"/>
-                                <ui:TextBox Text="{Binding SpawnProtection, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,10"/>
-                            </StackPanel>
-                        </ui:CardExpander>
-
-                        <!-- Memory & Performance -->
-                        <ui:CardExpander x:Name="ExpanderMemory" IsExpanded="False" Icon="{ui:SymbolIcon TopSpeed24}" Margin="0,0,0,12">
-                            <ui:CardExpander.Header>
-                                <StackPanel>
-                                    <TextBlock Text="Memory &amp; Performance" FontSize="14" FontWeight="SemiBold"/>
-                                    <TextBlock Text="Minimum and maximum RAM allocation for the JVM." Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="12" Margin="0,4,0,0"/>
-                                </StackPanel>
-                            </ui:CardExpander.Header>
-                            <StackPanel Margin="16,8,16,16">
-                                <TextBlock Text="Minimum RAM (Xms):" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,5"/>
-                                <StackPanel Orientation="Horizontal">
-                                    <Slider Value="{Binding MinRam}" Width="300" Minimum="512" Maximum="16384" TickFrequency="512" />
-                                    <TextBlock Text="{Binding MinRamDisplay}" Margin="10,0,0,0" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
-                                </StackPanel>
-
-                                <TextBlock Text="Maximum RAM (Xmx):" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,15,0,5"/>
-                                <StackPanel Orientation="Horizontal">
-                                    <Slider Value="{Binding MaxRam}" Width="300" Minimum="512" Maximum="16384" TickFrequency="512" />
-                                    <TextBlock Text="{Binding MaxRamDisplay}" Margin="10,0,0,0" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
-                                </StackPanel>
-
-                                <TextBlock Visibility="{Binding ShowRamWarning, Converter={StaticResource BooleanToVisibilityConverter}}" Foreground="#FFB4AB" FontWeight="Bold" Margin="0,10,0,0" Text="WARNING: Allocation exceeds 80% of physical memory!"/>
-                            </StackPanel>
-                        </ui:CardExpander>
-
-                        <!-- Players -->
-                        <ui:CardExpander x:Name="ExpanderPlayers" IsExpanded="False" Icon="{ui:SymbolIcon People24}" Margin="0,0,0,12">
-                            <ui:CardExpander.Header>
-                                <StackPanel>
-                                    <TextBlock Text="Players" FontSize="14" FontWeight="SemiBold"/>
-                                    <TextBlock Text="Max players, online mode, PvP, and whitelist." Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="12" Margin="0,4,0,0"/>
-                                </StackPanel>
-                            </ui:CardExpander.Header>
-                            <StackPanel Margin="16,8,16,16">
-                                <TextBlock Text="Max Players:" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,5"/>
-                                <ui:TextBox Text="{Binding MaxPlayers, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,10"/>
-                                
-                                <ui:ToggleSwitch IsChecked="{Binding OnlineMode}" Content="Online Mode (Authenticate with Mojang)" OnContent="On" OffContent="Off"/>
-                                <ui:ToggleSwitch IsChecked="{Binding Pvp}" Content="PvP Enabled" OnContent="On" OffContent="Off"/>
-                                <ui:ToggleSwitch IsChecked="{Binding WhiteList}" Content="Whitelist Enabled" OnContent="On" OffContent="Off"/>
-                            </StackPanel>
-                        </ui:CardExpander>
-
-                        <!-- Network -->
-                        <ui:CardExpander x:Name="ExpanderNetwork" IsExpanded="False" Icon="{ui:SymbolIcon Wifi124}" Margin="0,0,0,12">
-                            <ui:CardExpander.Header>
-                                <StackPanel>
-                                    <TextBlock Text="Network" FontSize="14" FontWeight="SemiBold"/>
-                                    <TextBlock Text="Server port, IP binding, and Playit.gg tunnel status." Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="12" Margin="0,4,0,0"/>
-                                </StackPanel>
-                            </ui:CardExpander.Header>
-                            <StackPanel Margin="16,8,16,16">
-                                <TextBlock Text="Server Port:" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,5"/>
-                                <ui:TextBox Text="{Binding ServerPort, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,10"/>
-                                <TextBlock Text="Server IP (Leave blank for default):" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,5"/>
-                                <ui:TextBox Text="{Binding ServerIp, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,10"/>
-                                
-                                <TextBlock Text="Playit.gg Status:" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,5"/>
-                                <TextBlock Text="{Binding PlayitAgentStatusText}" Foreground="#F9E2AF" FontSize="12" FontWeight="SemiBold" Margin="0,0,0,8"/>
-
-                                <TextBlock Text="Playit.gg Public Address:" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,5"/>
-                                <ui:TextBox Text="{Binding PlayitAddress}" IsReadOnly="True" Foreground="#89B4FA" Margin="0,0,0,10" BorderBrush="#89B4FA" BorderThickness="1"/>
-                                
-                                <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
-                                    <ui:Button Content="Refresh Tunnel Address" Appearance="Secondary" Command="{Binding ResolvePlayitCommand}" Margin="0,0,8,0"/>
-                                    <ui:Button Content="Manage Tunnels" Appearance="Secondary" Command="{Binding OpenPlayitDashboardCommand}"/>
-                                </StackPanel>
-                            </StackPanel>
-                        </ui:CardExpander>
-
-                        <!-- Gameplay -->
-                        <ui:CardExpander x:Name="ExpanderGameplay" IsExpanded="False" Icon="{ui:SymbolIcon Games24}" Margin="0,0,0,12">
-                            <ui:CardExpander.Header>
-                                <StackPanel>
-                                    <TextBlock Text="Gameplay" FontSize="14" FontWeight="SemiBold"/>
-                                    <TextBlock Text="Gamemode, difficulty, command blocks, flight, and Nether." Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="12" Margin="0,4,0,0"/>
-                                </StackPanel>
-                            </ui:CardExpander.Header>
-                            <StackPanel Margin="16,8,16,16">
-                                <TextBlock Text="Gamemode:" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,5"/>
-                                <ComboBox ItemsSource="{Binding Gamemodes}" SelectedItem="{Binding Gamemode, Mode=TwoWay}" Margin="0,0,0,10" />
-
-                                <TextBlock Text="Difficulty:" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,5"/>
-                                <ComboBox ItemsSource="{Binding Difficulties}" SelectedItem="{Binding Difficulty, Mode=TwoWay}" Margin="0,0,0,10" />
-
-                                <ui:ToggleSwitch IsChecked="{Binding AllowBlock}" Content="Allow Command Blocks" OnContent="On" OffContent="Off"/>
-                                <ui:ToggleSwitch IsChecked="{Binding AllowFlight}" Content="Allow Flight" OnContent="On" OffContent="Off"/>
-                                <ui:ToggleSwitch IsChecked="{Binding AllowNether}" Content="Allow Nether" OnContent="On" OffContent="Off"/>
-                            </StackPanel>
-                        </ui:CardExpander>
-
-                        <!-- Advanced Properties -->
-                        <ui:CardExpander x:Name="ExpanderAdvanced" IsExpanded="False" Icon="{ui:SymbolIcon Code24}" Margin="0,0,0,12">
-                            <ui:CardExpander.Header>
-                                <StackPanel>
-                                    <TextBlock Text="Advanced Properties" FontSize="14" FontWeight="SemiBold"/>
-                                    <TextBlock Text="Edit the complete server.properties file directly." Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="12" Margin="0,4,0,0"/>
-                                </StackPanel>
-                            </ui:CardExpander.Header>
-                            <StackPanel Margin="16,8,16,16">
-                                <TextBlock Text="This editor saves the raw file exactly as written. If you edit this text, it wins over the individual fields above when you click Save Configurations." FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" Margin="0,0,0,10"/>
-                                <TextBox Text="{Binding RawServerProperties, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                         AcceptsReturn="True"
-                                         AcceptsTab="True"
-                                         TextWrapping="NoWrap"
-                                         VerticalScrollBarVisibility="Auto"
-                                         HorizontalScrollBarVisibility="Auto"
-                                         FontFamily="Consolas"
-                                         FontSize="12"
-                                         MinHeight="320"/>
-                            </StackPanel>
-                        </ui:CardExpander>
+            <!-- Bottom Action Bar -->
+            <Border DockPanel.Dock="Bottom"
+                    Margin="0,16,0,0"
+                    Padding="20,16"
+                    Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="12">
+                <Grid>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center"
+                                Visibility="{Binding HasUnsavedChanges, Converter={StaticResource VisibleIfTrue}}">
+                        <ui:SymbolIcon Symbol="Warning24" Foreground="#F38BA8" Margin="0,0,10,0"/>
+                        <TextBlock Text="Unsaved changes detected" 
+                                   Foreground="#F38BA8"
+                                   FontSize="13"
+                                   FontWeight="SemiBold"
+                                   VerticalAlignment="Center"/>
                     </StackPanel>
-                </ScrollViewer>
-            </TabItem>
-
-            <!-- ═══════════════════════ TAB 2: WORLDS ═══════════════════════ -->
-            <TabItem Header="  Worlds  " Foreground="White">
-                <ScrollViewer x:Name="WorldsScrollViewer" VerticalScrollBarVisibility="Auto" Padding="0,0,16,0" Background="Transparent">
-                    <ui:Card Padding="20">
-                    <StackPanel>
-                        <TextBlock Text="{Binding WorldStatusText}" Foreground="{DynamicResource TextFillColorPrimaryBrush}" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,6"/>
-                        <TextBlock Text="{Binding WorldSizeText}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="12" Margin="0,0,0,20"/>
-                        
-                        <TextBlock Visibility="{Binding IsRunning, Converter={StaticResource BooleanToVisibilityConverter}}" Text="Server is running — stop the server before managing worlds." Foreground="#FFB4AB" FontWeight="SemiBold" Margin="0,0,0,15"/>
-                        
-                        <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
-                            <ui:Button Content="Upload World (ZIP)" Command="{Binding UploadWorldCommand}" Appearance="Primary" Margin="0,0,10,0"/>
-                            <ui:Button Content="Delete Current World" Command="{Binding DeleteWorldCommand}" Appearance="Danger"/>
-                        </StackPanel>
-                        
-                        <TextBlock Visibility="{Binding ShowWorldProgress, Converter={StaticResource BooleanToVisibilityConverter}}" Text="{Binding WorldProgressText}" Foreground="#A6E3A1" Margin="0,10,0,0"/>
+                    
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                        <ui:Button Content="Discard" Appearance="Secondary" Margin="0,0,12,0" Command="{Binding CancelCommand}"/>
+                        <ui:Button Content="Save Changes" Appearance="Primary" Command="{Binding SaveCommand}" MinWidth="140"/>
                     </StackPanel>
-                    </ui:Card>
-                </ScrollViewer>
-            </TabItem>
+                </Grid>
+            </Border>
 
-            <!-- ═══════════════════════ TAB 3: PLUGINS ═══════════════════════ -->
-            <TabItem x:Name="TabPlugins" Header="  Plugins  " Foreground="White">
-                <ScrollViewer x:Name="PluginsScrollViewer" VerticalScrollBarVisibility="Auto" Padding="0,0,16,0" Background="Transparent">
-                    <ui:Card Padding="20">
-                    <StackPanel>
-                        <TextBlock Visibility="{Binding IsRunning, Converter={StaticResource BooleanToVisibilityConverter}}" Text="Server is running — stop the server before managing plugins." Foreground="#FFB4AB" FontWeight="SemiBold" Margin="0,0,0,15"/>
-                        
-                        <TextBlock Visibility="{Binding ShowVanillaWarning, Converter={StaticResource BooleanToVisibilityConverter}}" Text="Vanilla servers do not support plugins. Switch to Paper for plugin support." Foreground="#F9E2AF" FontWeight="SemiBold" Margin="0,0,0,15"/>
-                        
-                        <StackPanel Orientation="Horizontal" Margin="0,0,0,15">
-                            <ui:Button Content="Add Plugin (.jar)" Command="{Binding AddPluginCommand}" Appearance="Primary" Margin="0,0,8,0"/>
-                            <ui:Button Content="Browse Marketplace" Command="{Binding BrowseModrinthPluginsCommand}" Appearance="Secondary"/>
-                        </StackPanel>
-                        
-                        <ItemsControl ItemsSource="{Binding Plugins}">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="10" Padding="14,10" Margin="0,0,0,8">
-                                        <Grid>
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="*"/>
-                                                <ColumnDefinition Width="Auto"/>
-                                            </Grid.ColumnDefinitions>
-                                            <StackPanel Grid.Column="0">
-                                                <StackPanel Orientation="Horizontal">
-                                                    <TextBlock Text="{Binding Name}" Foreground="{DynamicResource TextFillColorPrimaryBrush}" FontWeight="SemiBold"/>
-                                                    <TextBlock Visibility="{Binding IsMismatch, Converter={StaticResource BooleanToVisibilityConverter}}" Text=" ⚠ Version Mismatch" Foreground="Orange" FontWeight="SemiBold"/>
-                                                </StackPanel>
-                                                <TextBlock Text="{Binding SizeKb, StringFormat=Size: {0:N1} KB}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="11"/>
-                                                <TextBlock Text="{Binding ApiVersion, StringFormat=API: {0}}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="11"/>
+            <!-- Main Layout Grid -->
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="230"/>
+                    <ColumnDefinition Width="28"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+
+                <ui:NavigationView Grid.Column="0"
+                                   x:Name="SidebarList"
+                                   PaneDisplayMode="Left"
+                                   IsPaneToggleVisible="False"
+                                   IsBackButtonVisible="Collapsed">
+                    <ui:NavigationView.MenuItems>
+                        <ui:NavigationViewItem Content="Identity &amp; Performance" Icon="{ui:SymbolIcon Settings24}" Click="NavItem_Click" IsActive="True"/>
+                        <ui:NavigationViewItem Content="Gameplay Rules" Icon="{ui:SymbolIcon Globe24}" Click="NavItem_Click"/>
+                        <ui:NavigationViewItem Content="World &amp; Files" Icon="{ui:SymbolIcon Folder24}" Click="NavItem_Click"/>
+                        <ui:NavigationViewItem Content="Addons (Plugins/Mods)" Icon="{ui:SymbolIcon Add24}" Click="NavItem_Click"/>
+                        <ui:NavigationViewItem Content="Automated Backups" Icon="{ui:SymbolIcon Save24}" Click="NavItem_Click"/>
+                        <ui:NavigationViewItem Content="Fault Tolerance" Icon="{ui:SymbolIcon ArrowSync24}" Click="NavItem_Click"/>
+                        <ui:NavigationViewItem Content="Advanced Editor" Icon="{ui:SymbolIcon Code24}" Click="NavItem_Click"/>
+                    </ui:NavigationView.MenuItems>
+                </ui:NavigationView>
+
+                <Border x:Name="ContentAreaCard" Grid.Column="2" VerticalAlignment="Stretch">
+                    <TabControl x:Name="MainTabControl" Background="Transparent" BorderThickness="0" Margin="0" VerticalAlignment="Stretch">
+                        <TabControl.Resources><Style TargetType="TabPanel"><Setter Property="Visibility" Value="Collapsed"/></Style></TabControl.Resources>
+                
+                        <!-- TAB 1: IDENTITY & PERFORMANCE -->
+                        <TabItem Header="Identity">
+                            <ScrollViewer x:Name="GeneralScrollViewer" VerticalScrollBarVisibility="Auto" Padding="0,0,16,0">
+                                <StackPanel>
+                                    <ui:CardExpander Header="Visual Identity" Icon="{ui:SymbolIcon Settings24}" Margin="0,0,0,12" IsExpanded="True">
+                                        <StackPanel Margin="16,8,16,16">
+                                            <TextBlock Text="Message of the Day (MOTD):" Style="{StaticResource SettingsHeader}"/>
+                                            <ui:TextBox Text="{Binding Motd, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="Managed by PocketMC"/>
+                                            
+                                            <TextBlock Text="Networking Port:" Style="{StaticResource SettingsHeader}" Margin="0,15,0,8"/>
+                                            <ui:TextBox Text="{Binding ServerPort, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="25565" Width="120" HorizontalAlignment="Left"/>
+
+                                            <TextBlock Text="Server Identity Icon:" Style="{StaticResource SettingsHeader}" Margin="0,15,0,8"/>
+                                            <StackPanel Orientation="Horizontal">
+                                                <Image Source="{Binding ServerIcon}" Width="64" Height="64" Margin="0,0,16,0" Stretch="UniformToFill"/>
+                                                <ui:Button Content="Change Icon..." Appearance="Secondary" Command="{Binding BrowseIconCommand}" VerticalAlignment="Center"/>
                                             </StackPanel>
-                                            <ui:Button Grid.Column="1" Content="Remove" Appearance="Danger" Command="{Binding DataContext.DeletePluginCommand, RelativeSource={RelativeSource AncestorType=Page}}" CommandParameter="{Binding Path}" VerticalAlignment="Center"/>
-                                        </Grid>
-                                    </Border>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                    </StackPanel>
-                    </ui:Card>
-                </ScrollViewer>
-            </TabItem>
+                                        </StackPanel>
+                                    </ui:CardExpander>
 
-            <!-- ═══════════════════════ TAB 4: MODS ═══════════════════════ -->
-            <TabItem Header="  Mods  " Foreground="White">
-                <ScrollViewer x:Name="ModsScrollViewer" VerticalScrollBarVisibility="Auto" Padding="0,0,16,0" Background="Transparent">
-                    <ui:Card Padding="20">
-                    <StackPanel>
-                        <TextBlock Visibility="{Binding IsRunning, Converter={StaticResource BooleanToVisibilityConverter}}" Text="Server is running — stop the server before managing mods." Foreground="#FFB4AB" FontWeight="SemiBold" Margin="0,0,0,15"/>
-                        
-                        <StackPanel Orientation="Horizontal" Margin="0,0,0,15">
-                            <ui:Button Content="Add Mod (.jar)" Command="{Binding AddModCommand}" Appearance="Primary" Margin="0,0,8,0"/>
-                            <ui:Button Content="Browse Marketplace" Command="{Binding BrowseModrinthModsCommand}" Appearance="Secondary" Margin="0,0,8,0"/>
-                            <ui:Button Content="Import Modpack" Command="{Binding ImportModpackCommand}" Appearance="Secondary" Margin="0,0,8,0"/>
-                            <ui:Button Content="Browse Modpacks" Command="{Binding BrowseModpacksCommand}" Appearance="Secondary"/>
-                        </StackPanel>
-                        
-                        <ItemsControl ItemsSource="{Binding Mods}">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="10" Padding="14,10" Margin="0,0,0,8">
-                                        <Grid>
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="*"/>
-                                                <ColumnDefinition Width="Auto"/>
-                                            </Grid.ColumnDefinitions>
-                                            <StackPanel Grid.Column="0">
-                                                <TextBlock Text="{Binding Name}" Foreground="{DynamicResource TextFillColorPrimaryBrush}" FontWeight="SemiBold"/>
-                                                <TextBlock Text="{Binding SizeKb, StringFormat=Size: {0:N1} KB}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="11"/>
-                                            </StackPanel>
-                                            <ui:Button Grid.Column="1" Content="Remove" Appearance="Danger" Command="{Binding DataContext.DeleteModCommand, RelativeSource={RelativeSource AncestorType=Page}}" CommandParameter="{Binding Path}" VerticalAlignment="Center"/>
-                                        </Grid>
-                                    </Border>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                    </StackPanel>
-                    </ui:Card>
-                </ScrollViewer>
-            </TabItem>
-
-            <!-- ═══════════════════════ TAB 5: BACKUPS ═══════════════════════ -->
-            <TabItem Header="  Backups  " Foreground="White">
-                <ScrollViewer x:Name="BackupsScrollViewer" VerticalScrollBarVisibility="Auto" Padding="0,0,16,0" Background="Transparent">
-                    <StackPanel>
-
-                        <!-- Manual Backup -->
-                        <ui:Card Padding="20" Margin="0,0,0,12">
-                            <StackPanel>
-                                <TextBlock Text="Manual Backup" Foreground="{DynamicResource TextFillColorPrimaryBrush}" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,10"/>
-                                <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
-                                    <ui:Button Content="Create Backup Now" Command="{Binding CreateBackupCommand}" Appearance="Primary" Margin="0,0,10,0"/>
-                                </StackPanel>
-                                <TextBlock Visibility="{Binding ShowBackupProgress, Converter={StaticResource BooleanToVisibilityConverter}}" Text="{Binding BackupProgressText}" Foreground="#A6E3A1" Margin="0,0,0,0"/>
-                            </StackPanel>
-                        </ui:Card>
-
-                        <!-- Schedule Settings -->
-                        <ui:Card Padding="20" Margin="0,0,0,12">
-                            <StackPanel>
-                                <TextBlock Text="Automatic Schedule" Foreground="{DynamicResource TextFillColorPrimaryBrush}" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,10"/>
-                                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                                    <TextBlock Text="Backup Every:" Foreground="{DynamicResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" Margin="0,0,10,0"/>
-                                    <ComboBox SelectedValue="{Binding BackupIntervalHours}" SelectedValuePath="Tag" Width="150">
-                                        <ComboBoxItem Content="Manual Only" Tag="0"/>
-                                        <ComboBoxItem Content="Every 6 Hours" Tag="6"/>
-                                        <ComboBoxItem Content="Every 12 Hours" Tag="12"/>
-                                        <ComboBoxItem Content="Every 24 Hours" Tag="24"/>
-                                    </ComboBox>
-                                </StackPanel>
-                                <StackPanel Orientation="Horizontal" Margin="0,0,0,0">
-                                    <TextBlock Text="Keep Max:" Foreground="{DynamicResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" Margin="0,0,10,0"/>
-                                    <ComboBox SelectedValue="{Binding MaxBackupsToKeep}" SelectedValuePath="Tag" Width="150">
-                                        <ComboBoxItem Content="5 backups" Tag="5"/>
-                                        <ComboBoxItem Content="10 backups" Tag="10"/>
-                                        <ComboBoxItem Content="20 backups" Tag="20"/>
-                                        <ComboBoxItem Content="50 backups" Tag="50"/>
-                                    </ComboBox>
-                                </StackPanel>
-                            </StackPanel>
-                        </ui:Card>
-
-                        <!-- Backup List -->
-                        <ui:Card Padding="20">
-                            <StackPanel>
-                                <TextBlock Text="Available Backups" Foreground="{DynamicResource TextFillColorPrimaryBrush}" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,10"/>
-                                <TextBlock Visibility="{Binding IsRunning, Converter={StaticResource BooleanToVisibilityConverter}}" Text="Server must be stopped to restore backups." Foreground="#FFB4AB" FontWeight="SemiBold" Margin="0,0,0,10"/>
-                                <ItemsControl ItemsSource="{Binding Backups}">
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate>
-                                        <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="10" Padding="14,10" Margin="0,0,0,8">
-                                            <Grid>
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="*"/>
-                                                    <ColumnDefinition Width="Auto"/>
-                                                    <ColumnDefinition Width="Auto"/>
-                                                </Grid.ColumnDefinitions>
-                                                <StackPanel Grid.Column="0">
-                                                    <TextBlock Text="{Binding Name}" Foreground="{DynamicResource TextFillColorPrimaryBrush}" FontWeight="SemiBold"/>
-                                                    <TextBlock Text="{Binding SizeMb, StringFormat=Size: {0:N1} MB}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="11"/>
-                                                    <TextBlock Text="{Binding Created, StringFormat=Created: {0:yyyy-MM-dd HH:mm}}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="11"/>
-                                                </StackPanel>
-                                                <ui:Button Grid.Column="1" Content="Restore" Appearance="Primary" Command="{Binding DataContext.RestoreBackupCommand, RelativeSource={RelativeSource AncestorType=Page}}" CommandParameter="{Binding Path}" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                                                <ui:Button Grid.Column="2" Content="Delete" Appearance="Danger" Command="{Binding DataContext.DeleteBackupCommand, RelativeSource={RelativeSource AncestorType=Page}}" CommandParameter="{Binding Path}" VerticalAlignment="Center"/>
+                                    <ui:CardExpander Header="Resource Allocation" Icon="{ui:SymbolIcon TopSpeed24}" Margin="0,0,0,12" IsExpanded="True">
+                                        <StackPanel Margin="16,8,16,16">
+                                            <TextBlock Text="System RAM Limit:" Style="{StaticResource SettingsHeader}"/>
+                                            <Grid Margin="0,5,0,15">
+                                                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                                <TextBlock Text="0.5GB" VerticalAlignment="Center" Margin="0,0,12,0" FontSize="11"/>
+                                                <Slider Grid.Column="1" Value="{Binding MaxRam}" Minimum="512" Maximum="{Binding TotalRamMb}" TickFrequency="512" SmallChange="512" LargeChange="1024" IsSnapToTickEnabled="True"/>
+                                                <TextBlock Grid.Column="2" Text="{Binding MaxRamDisplay}" Margin="12,0,0,0" FontWeight="Bold" VerticalAlignment="Center"/>
                                             </Grid>
-                                        </Border>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-                            </StackPanel>
-                        </ui:Card>
-                    </StackPanel>
-                </ScrollViewer>
-            </TabItem>
+                                            
+                                            <TextBlock Text="Startup JVM Arguments:" Style="{StaticResource SettingsHeader}" Margin="0,5,0,8"/>
+                                            <ui:TextBox Text="{Binding AdvancedJvmArgs, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="-XX:+UseG1GC ..."/>
 
-            <!-- ═══════════════════════ TAB 6: CRASH & RESTART ═══════════════════════ -->
-            <TabItem Header="  Crash &amp; Restart  " Foreground="White">
-                <ScrollViewer x:Name="CrashRestartScrollViewer" VerticalScrollBarVisibility="Auto" Padding="0,0,16,0" Background="Transparent">
-                    <ui:Card Padding="20">
-                    <StackPanel>
+                                            <TextBlock Text="Custom Java Executable:" Style="{StaticResource SettingsHeader}" Margin="0,15,0,8"/>
+                                            <Grid>
+                                                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                                <ui:TextBox Text="{Binding JavaPath, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="Internal Java 17/21"/>
+                                                <ui:Button Grid.Column="1" Content="Browse" Command="{Binding BrowseJavaCommand}" Margin="8,0,0,0"/>
+                                            </Grid>
+                                        </StackPanel>
+                                    </ui:CardExpander>
+                                </StackPanel>
+                            </ScrollViewer>
+                        </TabItem>
 
-                        <TextBlock Text="Crash Recovery" Foreground="{DynamicResource TextFillColorPrimaryBrush}" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,10"/>
-                        <TextBlock Text="Configure automatic restarts when the server crashes unexpectedly." Foreground="{DynamicResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" Margin="0,0,0,15"/>
+                        <!-- TAB 2: GAMEPLAY RULES -->
+                        <TabItem Header="Gameplay">
+                            <ScrollViewer x:Name="GameplayScrollViewer" VerticalScrollBarVisibility="Auto" Padding="0,0,16,0">
+                                <StackPanel>
+                                    <ui:Card Padding="24" Margin="0,0,0,16">
+                                        <WrapPanel>
+                                            <StackPanel Width="280" Margin="10,0,10,20">
+                                                <TextBlock Text="Default Gamemode:" Style="{StaticResource SettingsSubtext}"/>
+                                                <ComboBox ItemsSource="{Binding Gamemodes}" SelectedItem="{Binding Gamemode, Mode=TwoWay}" HorizontalAlignment="Stretch"/>
+                                            </StackPanel>
+                                            <StackPanel Width="280" Margin="10,0,10,20">
+                                                <TextBlock Text="World Difficulty:" Style="{StaticResource SettingsSubtext}"/>
+                                                <ComboBox ItemsSource="{Binding Difficulties}" SelectedItem="{Binding Difficulty, Mode=TwoWay}" HorizontalAlignment="Stretch"/>
+                                            </StackPanel>
+                                            <StackPanel Width="280" Margin="10,0,10,20">
+                                                <TextBlock Text="Maximum Players:" Style="{StaticResource SettingsSubtext}"/>
+                                                <ui:TextBox Text="{Binding MaxPlayers, UpdateSourceTrigger=PropertyChanged}" />
+                                            </StackPanel>
+                                            <StackPanel Width="280" Margin="10,0,10,20">
+                                                <TextBlock Text="Spawn Protection Radius:" Style="{StaticResource SettingsSubtext}"/>
+                                                <ui:TextBox Text="{Binding SpawnProtection, UpdateSourceTrigger=PropertyChanged}" />
+                                            </StackPanel>
+                                            
+                                            <Separator Width="800" Margin="0,10,0,20" Background="#313244"/>
 
-                        <ui:ToggleSwitch IsChecked="{Binding EnableAutoRestart}" Content="Enable Auto-Restart on Crash" OnContent="On" OffContent="Off" Margin="0,0,0,20"/>
+                                            <StackPanel Width="400" Margin="10">
+                                                <ui:ToggleSwitch IsChecked="{Binding OnlineMode}" Content="Online Mode (Identity Auth)" />
+                                                <ui:ToggleSwitch IsChecked="{Binding Pvp}" Content="Enable PvP Damage" />
+                                                <ui:ToggleSwitch IsChecked="{Binding WhiteList}" Content="Enable Whitelist" />
+                                            </StackPanel>
+                                            <StackPanel Width="400" Margin="10">
+                                                <ui:ToggleSwitch IsChecked="{Binding AllowBlock}" Content="Enable Command Blocks" />
+                                                <ui:ToggleSwitch IsChecked="{Binding AllowFlight}" Content="Allow Cheat Flight" />
+                                                <ui:ToggleSwitch IsChecked="{Binding AllowNether}" Content="Allow Dimension: Nether" />
+                                            </StackPanel>
+                                        </WrapPanel>
+                                    </ui:Card>
+                                </StackPanel>
+                            </ScrollViewer>
+                        </TabItem>
 
-                        <StackPanel Orientation="Horizontal" Margin="0,0,0,15">
-                            <TextBlock Text="Max Auto-Restarts:" Foreground="{DynamicResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" Margin="0,0,10,0"/>
-                            <ui:TextBox Text="{Binding MaxAutoRestarts, UpdateSourceTrigger=PropertyChanged}" Width="76"/>
-                            <TextBlock Text=" times" Foreground="{DynamicResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" Margin="5,0,0,0"/>
-                        </StackPanel>
+                        <!-- TAB 3: WORLD & FILES -->
+                        <TabItem Header="World">
+                            <ScrollViewer x:Name="WorldScrollViewer" VerticalScrollBarVisibility="Auto" Padding="0,0,16,0">
+                                <StackPanel>
+                                    <ui:Card Padding="32" Margin="0,0,0,16">
+                                        <StackPanel>
+                                            <TextBlock Text="World Instance Management" Style="{StaticResource SettingsHeader}" FontSize="18"/>
+                                            <TextBlock Text="{Binding World.WorldStatusText}" Foreground="#A6E3A1" FontWeight="SemiBold" Margin="0,5,0,2"/>
+                                            <TextBlock Text="{Binding World.WorldSizeText}" Style="{StaticResource SettingsSubtext}" Margin="0,0,0,25"/>
+                                            
+                                            <TextBlock Text="World Generation Seed:" Style="{StaticResource SettingsHeader}"/>
+                                            <ui:TextBox Text="{Binding Seed, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="Leave empty for random" Margin="0,0,0,15"/>
 
-                        <StackPanel Orientation="Horizontal" Margin="0,0,0,15">
-                            <TextBlock Text="Restart Delay:" Foreground="{DynamicResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" Margin="0,0,10,0"/>
-                            <ui:TextBox Text="{Binding AutoRestartDelay, UpdateSourceTrigger=PropertyChanged}" Width="76"/>
-                            <TextBlock Text=" seconds" Foreground="{DynamicResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" Margin="5,0,0,0"/>
-                        </StackPanel>
+                                            <TextBlock Text="World Generator Type:" Style="{StaticResource SettingsHeader}"/>
+                                            <ComboBox ItemsSource="{Binding LevelTypes}" SelectedItem="{Binding LevelType, Mode=TwoWay}" Margin="0,0,0,30" HorizontalAlignment="Left" Width="300"/>
 
-                    </StackPanel>
-                    </ui:Card>
-                </ScrollViewer>
-            </TabItem>
-        </TabControl>
-        </Border>
+                                            <StackPanel Orientation="Horizontal">
+                                                <ui:Button Content="Import World (ZIP)" Command="{Binding World.UploadWorldCommand}" Appearance="Primary" Margin="0,0,12,0" Icon="{ui:SymbolIcon ArrowUpload24}"/>
+                                                <ui:Button Content="Wipe World Data" Command="{Binding World.DeleteWorldCommand}" Appearance="Danger" Icon="{ui:SymbolIcon Delete24}"/>
+                                            </StackPanel>
+                                            
+                                            <StackPanel Visibility="{Binding World.ShowWorldProgress, Converter={StaticResource VisibleIfTrue}}" Margin="0,25,0,0">
+                                                <ProgressBar IsIndeterminate="True" Height="6"/>
+                                                <TextBlock Text="{Binding World.WorldProgressText}" HorizontalAlignment="Center" Margin="0,10,0,0" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </ui:Card>
+                                </StackPanel>
+                            </ScrollViewer>
+                        </TabItem>
+
+                        <!-- TAB 4: ADDONS -->
+                        <TabItem Header="Addons">
+                            <ScrollViewer x:Name="AddonsScrollViewer" VerticalScrollBarVisibility="Auto" Padding="0,0,16,0">
+                                <StackPanel>
+                                    <TextBlock Text="Server Plugins" Style="{StaticResource SettingsHeader}" Margin="4,0,0,12"/>
+                                    <ui:Card Margin="0,0,0,16" Padding="20">
+                                        <StackPanel>
+                                            <TextBlock Visibility="{Binding Addons.ShowVanillaWarning, Converter={StaticResource VisibleIfTrue}}" 
+                                                       Text="⚠ Plugins are not supported on Vanilla software. Please use Paper or Spigot." Foreground="#F38BA8" Margin="0,0,0,15" FontSize="12" FontWeight="SemiBold"/>
+                                            <StackPanel Orientation="Horizontal">
+                                                <ui:Button Content="Local JAR" Command="{Binding Addons.AddPluginCommand}" Appearance="Secondary" Margin="0,0,12,0" Icon="{ui:SymbolIcon Add20}"/>
+                                                <ui:Button Content="Plugin Marketplace" Command="{Binding Addons.BrowseModrinthPluginsCommand}" Appearance="Primary" Icon="{ui:SymbolIcon Globe20}"/>
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </ui:Card>
+                                    <ItemsControl ItemsSource="{Binding Addons.Plugins}" Margin="0,0,0,24">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <ui:Card Margin="0,0,0,10" Padding="16,12">
+                                                    <Grid>
+                                                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                                        <StackPanel>
+                                                            <TextBlock Text="{Binding Name}" FontWeight="Bold" FontSize="14"/>
+                                                            <TextBlock Text="{Binding ApiVersion, StringFormat=API: {0}}" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                                                        </StackPanel>
+                                                        <ui:Button Grid.Column="1" Content="Delete" Appearance="Danger" Command="{Binding DataContext.Addons.DeletePluginCommand, RelativeSource={RelativeSource AncestorType=Page}}" CommandParameter="{Binding Path}" VerticalAlignment="Center"/>
+                                                    </Grid>
+                                                </ui:Card>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+
+                                    <TextBlock Text="Server Mods" Style="{StaticResource SettingsHeader}" Margin="4,20,0,12"/>
+                                    <ui:Card Margin="0,0,0,16" Padding="20">
+                                        <StackPanel Orientation="Horizontal">
+                                            <ui:Button Content="Add Mod JAR" Command="{Binding Addons.AddModCommand}" Appearance="Secondary" Margin="0,0,12,0" Icon="{ui:SymbolIcon Add20}"/>
+                                            <ui:Button Content="Browse Marketplace" Command="{Binding Addons.BrowseModrinthModsCommand}" Appearance="Primary" Margin="0,0,12,0" Icon="{ui:SymbolIcon Globe20}"/>
+                                            <ui:Button Content="Import Pack" Command="{Binding Addons.ImportModpackCommand}" Appearance="Secondary" Icon="{ui:SymbolIcon FolderZip20}"/>
+                                        </StackPanel>
+                                    </ui:Card>
+                                    <ItemsControl ItemsSource="{Binding Addons.Mods}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <ui:Card Margin="0,0,0,10" Padding="16,12">
+                                                    <Grid>
+                                                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                                        <TextBlock Text="{Binding Name}" FontWeight="Bold" FontSize="14" VerticalAlignment="Center"/>
+                                                        <ui:Button Grid.Column="1" Content="Delete" Appearance="Danger" Command="{Binding DataContext.Addons.DeleteModCommand, RelativeSource={RelativeSource AncestorType=Page}}" CommandParameter="{Binding Path}" VerticalAlignment="Center"/>
+                                                    </Grid>
+                                                </ui:Card>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+                            </ScrollViewer>
+                        </TabItem>
+
+                        <!-- TAB 5: BACKUPS -->
+                        <TabItem Header="Backups">
+                            <ScrollViewer x:Name="BackupsScrollViewer" VerticalScrollBarVisibility="Auto" Padding="0,0,16,0">
+                                <StackPanel>
+                                    <ui:Card Padding="24" Margin="0,0,0,20">
+                                        <StackPanel>
+                                            <TextBlock Text="Automated Data Retention" Style="{StaticResource SettingsHeader}"/>
+                                            <WrapPanel Margin="0,10,0,20">
+                                                <StackPanel Width="230" Margin="0,0,20,10">
+                                                    <TextBlock Text="Interval (Hours):" Style="{StaticResource SettingsSubtext}"/>
+                                                    <ui:TextBox Text="{Binding Backups.BackupIntervalHours, Mode=TwoWay}" PlaceholderText="0 = Manual Only"/>
+                                                </StackPanel>
+                                                <StackPanel Width="230" Margin="0,0,0,10">
+                                                    <TextBlock Text="Max Archives Kept:" Style="{StaticResource SettingsSubtext}"/>
+                                                    <ui:TextBox Text="{Binding Backups.MaxBackupsToKeep, Mode=TwoWay}"/>
+                                                </StackPanel>
+                                            </WrapPanel>
+                                            <ui:Button Content="Create Backup Archive" Command="{Binding Backups.CreateBackupCommand}" Appearance="Primary" Icon="{ui:SymbolIcon Save20}" Margin="0,5,0,0"/>
+                                            <StackPanel Visibility="{Binding Backups.ShowBackupProgress, Converter={StaticResource VisibleIfTrue}}" Margin="0,15,0,0">
+                                                <ProgressBar IsIndeterminate="True" Height="4"/>
+                                                <TextBlock Text="{Binding Backups.BackupProgressText}" Foreground="#A6E3A1" Margin="0,8,0,0" FontSize="12"/>
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </ui:Card>
+                                    
+                                    <ui:ListView ItemsSource="{Binding Backups.Backups}" Margin="4,0,0,0">
+                                        <ui:ListView.ItemTemplate>
+                                            <DataTemplate>
+                                                <ui:Card Margin="0,0,0,10" Padding="16,12">
+                                                    <Grid>
+                                                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                                        <StackPanel>
+                                                            <TextBlock Text="{Binding Name}" FontWeight="Bold" FontSize="14"/>
+                                                            <TextBlock Text="{Binding SizeMb, StringFormat={}{0:F1} MB}" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                                                        </StackPanel>
+                                                        <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                                            <ui:Button Content="Restore" Appearance="Secondary" Command="{Binding DataContext.Backups.RestoreBackupCommand, RelativeSource={RelativeSource AncestorType=Page}}" CommandParameter="{Binding Path}" Margin="0,0,10,0" VerticalAlignment="Center"/>
+                                                            <ui:Button Icon="{ui:SymbolIcon Delete20}" Appearance="Danger" Command="{Binding DataContext.Backups.DeleteBackupCommand, RelativeSource={RelativeSource AncestorType=Page}}" CommandParameter="{Binding Path}" VerticalAlignment="Center"/>
+                                                        </StackPanel>
+                                                    </Grid>
+                                                </ui:Card>
+                                            </DataTemplate>
+                                        </ui:ListView.ItemTemplate>
+                                    </ui:ListView>
+                                </StackPanel>
+                            </ScrollViewer>
+                        </TabItem>
+
+                        <!-- TAB 6: FAULT TOLERANCE -->
+                        <TabItem Header="FaultTolerance">
+                            <ScrollViewer x:Name="RestartScrollViewer" VerticalScrollBarVisibility="Auto" Padding="0,0,16,0">
+                                <ui:Card Padding="32">
+                                    <StackPanel>
+                                        <TextBlock Text="Auto-Restart Engine" Style="{StaticResource SettingsHeader}" FontSize="18"/>
+                                        <ui:ToggleSwitch IsChecked="{Binding EnableAutoRestart}" Content="Restart on Failure" OnContent="Enabled" OffContent="Disabled"/>
+                                        
+                                        <TextBlock Text="Max Failure Tolerance (Attempts):" Style="{StaticResource SettingsSubtext}" Margin="0,20,0,8"/>
+                                        <ui:TextBox Text="{Binding MaxAutoRestarts}" Width="100" HorizontalAlignment="Left"/>
+
+                                        <TextBlock Text="Restart Cooldown (Seconds):" Style="{StaticResource SettingsSubtext}" Margin="0,20,0,8"/>
+                                        <ui:TextBox Text="{Binding AutoRestartDelay}" Width="100" HorizontalAlignment="Left"/>
+                                    </StackPanel>
+                                </ui:Card>
+                            </ScrollViewer>
+                        </TabItem>
+
+                        <!-- TAB 7: ADVANCED EDITOR -->
+                        <TabItem Header="Advanced">
+                            <ScrollViewer x:Name="AdvancedScrollViewer" VerticalScrollBarVisibility="Auto" Padding="0,0,16,0">
+                                <StackPanel>
+                                    <ui:Card Padding="24" Margin="0,0,0,16">
+                                        <StackPanel>
+                                            <TextBlock Text="Internal Properties (server.properties)" Style="{StaticResource SettingsHeader}"/>
+                                            <TextBlock Text="Directly modify internal key-value pairs. Core properties are protected." Style="{StaticResource SettingsSubtext}" Margin="0,0,0,20"/>
+                                            <ui:Button Content="Append Parameter" Command="{Binding AddAdvancedPropertyCommand}" Appearance="Secondary" Icon="{ui:SymbolIcon Add20}"/>
+                                        </StackPanel>
+                                    </ui:Card>
+                                    
+                                    <ItemsControl ItemsSource="{Binding AdvancedProperties}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Grid Margin="0,0,0,12">
+                                                    <Grid.ColumnDefinitions><ColumnDefinition Width="220"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                                    <ui:TextBox Text="{Binding Key, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding IsCore, Converter={StaticResource InvertedBooleanConverter}}" Margin="0,0,12,0"/>
+                                                    <ui:TextBox Grid.Column="1" Text="{Binding Value, UpdateSourceTrigger=PropertyChanged}"/>
+                                                    <ui:Button Grid.Column="2" Icon="{ui:SymbolIcon Delete20}" Appearance="Danger" Command="{Binding DataContext.DeleteAdvancedPropertyCommand, RelativeSource={RelativeSource AncestorType=Page}}" Margin="12,0,0,0" Visibility="{Binding IsCore, Converter={StaticResource InvertedVisibilityConverter}}"/>
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+                            </ScrollViewer>
+                        </TabItem>
+                    </TabControl>
+                </Border>
             </Grid>
         </DockPanel>
     </Grid>

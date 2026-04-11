@@ -1,8 +1,12 @@
+using System;
 using System.Collections.Concurrent;
 using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using PocketMC.Desktop.Core.Interfaces;
 using PocketMC.Desktop.Models;
+using PocketMC.Desktop.Infrastructure;
 
 namespace PocketMC.Desktop.Services;
 
@@ -14,8 +18,8 @@ public class ServerProcessManager
 {
     private readonly JobObject _jobObject;
     private readonly InstanceManager _instanceManager;
-    private readonly JavaProvisioningService _javaProvisioning;
     private readonly INotificationService _notificationService;
+    private readonly ServerLaunchConfigurator _launchConfigurator;
     private readonly ILogger<ServerProcessManager> _logger;
     private readonly ILoggerFactory _loggerFactory;
     private readonly ConcurrentDictionary<Guid, ServerProcess> _activeProcesses = new();
@@ -29,15 +33,15 @@ public class ServerProcessManager
     public ServerProcessManager(
         JobObject jobObject,
         InstanceManager instanceManager,
-        JavaProvisioningService javaProvisioning,
         INotificationService notificationService,
+        ServerLaunchConfigurator launchConfigurator,
         ILogger<ServerProcessManager> logger,
         ILoggerFactory loggerFactory)
     {
         _jobObject = jobObject;
         _instanceManager = instanceManager;
-        _javaProvisioning = javaProvisioning;
         _notificationService = notificationService;
+        _launchConfigurator = launchConfigurator;
         _logger = logger;
         _loggerFactory = loggerFactory;
     }
@@ -52,15 +56,8 @@ public class ServerProcessManager
     /// </summary>
     public event Action<Guid, int>? OnRestartCountdownTick;
 
-    /// <summary>
-    /// Gets the collection of currently active server processes.
-    /// </summary>
     public ConcurrentDictionary<Guid, ServerProcess> ActiveProcesses => _activeProcesses;
 
-    /// <summary>
-    /// Starts a server process for the given instance.
-    /// Throws if already running, or if java/server.jar missing.
-    /// </summary>
     public async Task<ServerProcess> StartProcessAsync(InstanceMetadata meta, string appRootPath)
     {
         if (_activeProcesses.ContainsKey(meta.Id))
@@ -68,7 +65,6 @@ public class ServerProcessManager
             throw new InvalidOperationException($"Server '{meta.Name}' is already running.");
         }
 
-        // Reset consecutive restarts if it's been running stably for >10 mins
         if (_lastStartTime.TryGetValue(meta.Id, out var lastStart) &&
             (DateTime.UtcNow - lastStart).TotalMinutes > 10)
         {
@@ -85,13 +81,12 @@ public class ServerProcessManager
         var serverProcess = new ServerProcess(
             meta.Id,
             _jobObject,
-            _javaProvisioning,
+            _launchConfigurator,
             _loggerFactory.CreateLogger<ServerProcess>());
 
         serverProcess.OnStateChanged += state =>
         {
             OnInstanceStateChanged?.Invoke(meta.Id, state);
-
             if (state == ServerState.Stopped || state == ServerState.Crashed)
             {
                 _activeProcesses.TryRemove(meta.Id, out _);
@@ -107,9 +102,12 @@ public class ServerProcessManager
         _activeProcesses[meta.Id] = serverProcess;
         _historicalProcesses[meta.Id] = serverProcess;
 
-        try {
+        try
+        {
             await serverProcess.StartAsync(meta, instancePath, appRootPath);
-        } catch {
+        }
+        catch
+        {
             _activeProcesses.TryRemove(meta.Id, out _);
             throw;
         }
@@ -119,57 +117,32 @@ public class ServerProcessManager
 
     private async Task HandleServerCrashAsync(InstanceMetadata meta, string appRootPath)
     {
-        if (!meta.EnableAutoRestart)
-        {
-            return;
-        }
+        if (!meta.EnableAutoRestart) return;
 
         int attempts = _consecutiveRestarts.GetOrAdd(meta.Id, 0);
-
         if (attempts >= meta.MaxAutoRestarts)
         {
-            _logger.LogWarning(
-                "Server {ServerName} reached the max auto-restart limit after {Attempts} consecutive crashes.",
-                meta.Name,
-                attempts);
-
-            _notificationService.ShowInformation(
-                "PocketMC Server Crashed",
-                $"Server '{meta.Name}' has crashed consecutively {attempts} times and hit the max auto-restart limit.");
+            _logger.LogWarning("Server {ServerName} reached the max auto-restart limit.", meta.Name);
+            _notificationService.ShowInformation("PocketMC Server Crashed", $"Server '{meta.Name}' hit the max auto-restart limit.");
             return;
         }
 
         var cts = new CancellationTokenSource();
         _restartCancellations[meta.Id] = cts;
 
-        var backoffSeconds = CalculateRestartDelaySeconds(meta.AutoRestartDelaySeconds, attempts);
-        _logger.LogInformation(
-            "Scheduling auto-restart for {ServerName} in {DelaySeconds}s after crash attempt {Attempt}.",
-            meta.Name,
-            backoffSeconds,
-            attempts + 1);
-
+        var backoffSeconds = (int)Math.Min(meta.AutoRestartDelaySeconds * Math.Pow(2, attempts), 300);
+        
         try
         {
             for (int i = backoffSeconds; i > 0; i--)
             {
-                if (cts.Token.IsCancellationRequested)
-                {
-                    break;
-                }
-
+                if (cts.Token.IsCancellationRequested) break;
                 OnRestartCountdownTick?.Invoke(meta.Id, i);
                 await Task.Delay(1000, cts.Token);
             }
         }
-        catch (TaskCanceledException)
-        {
-            _logger.LogInformation("Auto-restart for server {ServerName} was cancelled.", meta.Name);
-        }
-        finally
-        {
-            _restartCancellations.TryRemove(meta.Id, out _);
-        }
+        catch (TaskCanceledException) { }
+        finally { _restartCancellations.TryRemove(meta.Id, out _); }
 
         if (!cts.IsCancellationRequested)
         {
@@ -178,16 +151,16 @@ public class ServerProcessManager
         }
     }
 
-    internal static int CalculateRestartDelaySeconds(int baseDelaySeconds, int attempts)
+    public bool IsWaitingToRestart(Guid instanceId) => _restartCancellations.ContainsKey(instanceId);
+
+    public static int CalculateRestartDelaySeconds(InstanceMetadata meta, int consecutiveRestarts)
     {
-        var safeBaseDelay = Math.Max(1, baseDelaySeconds);
-        var scaledDelay = safeBaseDelay * Math.Pow(2, attempts);
-        return (int)Math.Min(scaledDelay, 300);
+        return CalculateRestartDelaySeconds(meta.AutoRestartDelaySeconds, consecutiveRestarts);
     }
 
-    public bool IsWaitingToRestart(Guid instanceId)
+    public static int CalculateRestartDelaySeconds(int baseDelay, int consecutiveRestarts)
     {
-        return _restartCancellations.ContainsKey(instanceId);
+        return (int)Math.Min(baseDelay * Math.Pow(2, consecutiveRestarts), 300);
     }
 
     public void AbortRestartDelay(Guid instanceId)
@@ -199,33 +172,20 @@ public class ServerProcessManager
         }
     }
 
-    /// <summary>
-    /// Gracefully stops a running server by sending /stop and waiting.
-    /// </summary>
     public async Task StopProcessAsync(Guid instanceId)
     {
         AbortRestartDelay(instanceId);
         if (_activeProcesses.TryGetValue(instanceId, out var process))
-        {
             await process.StopAsync();
-        }
     }
 
-    /// <summary>
-    /// Force kills a running server immediately.
-    /// </summary>
     public void KillProcess(Guid instanceId)
     {
         AbortRestartDelay(instanceId);
         if (_activeProcesses.TryGetValue(instanceId, out var process))
-        {
             process.Kill();
-        }
     }
 
-    /// <summary>
-    /// Returns whether a specific instance is currently running.
-    /// </summary>
     public bool IsRunning(Guid instanceId)
     {
         return _activeProcesses.ContainsKey(instanceId) &&
@@ -233,44 +193,22 @@ public class ServerProcessManager
                _activeProcesses[instanceId].State != ServerState.Crashed;
     }
 
-    /// <summary>
-    /// Gets the ServerProcess for a running instance, or null.
-    /// </summary>
     public ServerProcess? GetProcess(Guid instanceId)
     {
-        if (_activeProcesses.TryGetValue(instanceId, out var process))
-        {
-            return process;
-        }
-
+        if (_activeProcesses.TryGetValue(instanceId, out var process)) return process;
         _historicalProcesses.TryGetValue(instanceId, out var historical);
         return historical;
     }
 
-    /// <summary>
-    /// Kills all running processes. Called on application shutdown.
-    /// </summary>
     public void KillAll()
     {
-        foreach (var cts in _restartCancellations.Values)
-        {
-            cts.Cancel();
-        }
-
+        foreach (var cts in _restartCancellations.Values) cts.Cancel();
         _restartCancellations.Clear();
-
         foreach (var kvp in _activeProcesses)
         {
-            try
-            {
-                kvp.Value.Kill();
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Failed to kill server instance {InstanceId} during shutdown.", kvp.Key);
-            }
+            try { kvp.Value.Kill(); }
+            catch (Exception ex) { _logger.LogWarning(ex, "Failed to kill server instance {InstanceId}.", kvp.Key); }
         }
-
         _activeProcesses.Clear();
     }
 }

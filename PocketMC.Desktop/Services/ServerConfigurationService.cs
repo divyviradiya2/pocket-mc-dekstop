@@ -50,6 +50,8 @@ namespace PocketMC.Desktop.Services
                 EnableAutoRestart = metadata.EnableAutoRestart,
                 MaxAutoRestarts = metadata.MaxAutoRestarts,
                 AutoRestartDelaySeconds = metadata.AutoRestartDelaySeconds,
+                BackupIntervalHours = metadata.BackupIntervalHours,
+                MaxBackupsToKeep = metadata.MaxBackupsToKeep,
                 Motd = props.TryGetValue("motd", out var motd) ? motd : "A Minecraft Server",
                 Seed = props.TryGetValue("level-seed", out var seed) ? seed : "",
                 SpawnProtection = props.TryGetValue("spawn-protection", out var protection) ? protection : "16",
@@ -87,6 +89,8 @@ namespace PocketMC.Desktop.Services
             metadata.EnableAutoRestart = configuration.EnableAutoRestart;
             metadata.MaxAutoRestarts = configuration.MaxAutoRestarts;
             metadata.AutoRestartDelaySeconds = configuration.AutoRestartDelaySeconds;
+            metadata.BackupIntervalHours = configuration.BackupIntervalHours;
+            metadata.MaxBackupsToKeep = configuration.MaxBackupsToKeep;
             metadata.CustomJavaPath = string.IsNullOrWhiteSpace(configuration.CustomJavaPath) ? null : configuration.CustomJavaPath;
             metadata.AdvancedJvmArgs = string.IsNullOrWhiteSpace(configuration.AdvancedJvmArgs) ? null : configuration.AdvancedJvmArgs.Trim();
 
@@ -138,6 +142,18 @@ namespace PocketMC.Desktop.Services
             }
 
             ServerPropertiesParser.Write(propsFile, props);
+        }
+
+        public int GetActivePortForInstance(Guid instanceId)
+        {
+            var path = _instanceManager.GetInstancePath(instanceId);
+            if (path == null) return 25565;
+            
+            if (TryGetProperty(path, "server-port", out var portStr) && int.TryParse(portStr, out int port))
+            {
+                return port;
+            }
+            return 25565;
         }
 
         public bool TryGetProperty(string serverDir, string key, out string? value)

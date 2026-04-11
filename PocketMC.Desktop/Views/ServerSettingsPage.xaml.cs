@@ -218,12 +218,13 @@ namespace PocketMC.Desktop.Views
         {
             return MainTabControl.SelectedIndex switch
             {
-                0 => PropertiesScrollViewer,
-                1 => WorldsScrollViewer,
-                2 => PluginsScrollViewer,
-                3 => ModsScrollViewer,
+                0 => GeneralScrollViewer,
+                1 => GameplayScrollViewer,
+                2 => WorldScrollViewer,
+                3 => AddonsScrollViewer,
                 4 => BackupsScrollViewer,
-                5 => CrashRestartScrollViewer,
+                5 => RestartScrollViewer,
+                6 => AdvancedScrollViewer,
                 _ => null
             };
         }

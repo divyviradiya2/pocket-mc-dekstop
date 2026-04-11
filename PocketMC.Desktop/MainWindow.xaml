@@ -23,13 +23,14 @@
                Visibility="Collapsed"/>
 
         <!-- LAYER 1: NavigationView shell -->
-        <ui:NavigationView x:Name="RootNavigation"
-                           PaneDisplayMode="Left"
-                           IsBackButtonVisible="Collapsed"
-                           IsPaneToggleVisible="True"
-                           OpenPaneLength="240"
-                           ScrollViewer.VerticalScrollBarVisibility="Disabled"
-                           ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+            <ui:NavigationView x:Name="RootNavigation"
+                               PaneDisplayMode="Left"
+                               IsBackButtonVisible="Collapsed"
+                               IsPaneToggleVisible="{Binding IsPaneToggleVisible}"
+                               IsPaneVisible="{Binding IsPaneVisible}"
+                               OpenPaneLength="240"
+                               ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                               ScrollViewer.HorizontalScrollBarVisibility="Disabled">
 
             <!-- ─── Title Bar ─── -->
             <ui:NavigationView.Header>
@@ -48,7 +49,8 @@
                             <!-- Breadcrumb trail -->
                             <StackPanel x:Name="BreadcrumbHost"
                                         Grid.Column="0" Orientation="Horizontal"
-                                        VerticalAlignment="Center" Margin="8,0,16,0">
+                                        VerticalAlignment="Center" Margin="8,0,16,0"
+                                        Visibility="{Binding BreadcrumbVisibility}">
                                 <TextBlock x:Name="BreadcrumbRoot"
                                            Text="PocketMC"
                                            FontSize="12"
@@ -58,15 +60,13 @@
                                            Text="  ›  "
                                            FontSize="12"
                                            Foreground="{DynamicResource TextFillColorDisabledBrush}"
-                                           VerticalAlignment="Center"
-                                           Visibility="Collapsed"/>
+                                           VerticalAlignment="Center"/>
                                 <TextBlock x:Name="BreadcrumbCurrent"
-                                           Text=""
+                                           Text="{Binding BreadcrumbCurrentText}"
                                            FontSize="12"
                                            FontWeight="SemiBold"
                                            Foreground="{DynamicResource TextFillColorPrimaryBrush}"
-                                           VerticalAlignment="Center"
-                                           Visibility="Collapsed"/>
+                                           VerticalAlignment="Center"/>
                             </StackPanel>
 
                             <!-- Context for detail pages like Console -->
@@ -77,9 +77,10 @@
                                     Padding="10,3"
                                     Margin="0,0,12,0"
                                     VerticalAlignment="Center"
-                                    Visibility="Collapsed">
+                                    Visibility="{Binding TitleBarContextVisibility}">
                                 <StackPanel Orientation="Horizontal">
                                     <TextBlock x:Name="TitleBarContextTitle"
+                                               Text="{Binding TitleBarTitle}"
                                                FontSize="12"
                                                FontWeight="SemiBold"
                                                Foreground="{DynamicResource TextFillColorPrimaryBrush}"
@@ -89,12 +90,13 @@
                                                FontSize="12"
                                                Foreground="{DynamicResource TextFillColorDisabledBrush}"
                                                VerticalAlignment="Center"
-                                               Visibility="Collapsed"/>
+                                               Visibility="Visible"/>
                                     <TextBlock x:Name="TitleBarContextStatus"
+                                               Text="{Binding TitleBarStatusText}"
+                                               Foreground="{Binding TitleBarStatusBrush}"
                                                FontSize="12"
                                                FontWeight="SemiBold"
-                                               VerticalAlignment="Center"
-                                               Visibility="Collapsed"/>
+                                               VerticalAlignment="Center"/>
                                 </StackPanel>
                             </Border>
 
@@ -105,11 +107,12 @@
                                     CornerRadius="4"
                                     Padding="10,3"
                                     Margin="0,0,8,0"
-                                    VerticalAlignment="Center">
+                                    VerticalAlignment="Center"
+                                    Visibility="{Binding GlobalHealthVisibility}">
                                 <TextBlock x:Name="GlobalHealthTextBlock"
-                                           Text=""
-                                           FontSize="11"
-                                           Foreground="Silver"/>
+                                           Text="{Binding GlobalHealthStatusText}"
+                                           Foreground="{Binding GlobalHealthStatusBrush, FallbackValue=Silver}"
+                                           FontSize="11"/>
                             </Border>
                         </Grid>
                     </ui:TitleBar.Header>

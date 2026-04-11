@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
-using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Input;
 using Microsoft.Extensions.DependencyInjection;
@@ -12,12 +11,12 @@ using PocketMC.Desktop.Core.Interfaces;
 using PocketMC.Desktop.Core.Mvvm;
 using PocketMC.Desktop.Models;
 using PocketMC.Desktop.Services;
+using PocketMC.Desktop.Infrastructure;
 using PocketMC.Desktop.Views;
+using PocketMC.Desktop.Utils;
 
 namespace PocketMC.Desktop.ViewModels
 {
-    // The existing InstanceCardViewModel is in Views, but let's assume it's in the namespace.
-    // I'll keep the `ObservableCollection<InstanceCardViewModel> Instances` property.
     public class DashboardViewModel : ViewModelBase
     {
         private readonly ApplicationState _applicationState;
@@ -25,17 +24,14 @@ namespace PocketMC.Desktop.ViewModels
         private readonly ServerConfigurationService _serverConfigurationService;
         private readonly ServerProcessManager _serverProcessManager;
         private readonly ResourceMonitorService _resourceMonitorService;
-        private readonly PlayitAgentService _playitAgentService;
-        private readonly PlayitApiClient _playitApiClient;
         private readonly TunnelService _tunnelService;
+        private readonly InstanceTunnelOrchestrator _tunnelOrchestrator;
         private readonly IDialogService _dialogService;
         private readonly IAppNavigationService _navigationService;
         private readonly IAppDispatcher _dispatcher;
         private readonly IServiceProvider _serviceProvider;
         private readonly ILogger<DashboardViewModel> _logger;
-        private readonly Dictionary<Guid, InstanceCardViewModel> _instanceLookup = new();
-        private readonly HashSet<Guid> _tunnelResolutionsInFlight = new();
-        private readonly object _tunnelResolutionLock = new();
+        private readonly object _lock = new();
         private bool _isActive;
 
         public ObservableCollection<InstanceCardViewModel> Instances { get; } = new();
@@ -56,9 +52,8 @@ namespace PocketMC.Desktop.ViewModels
             ServerConfigurationService serverConfigurationService,
             ServerProcessManager serverProcessManager,
             ResourceMonitorService resourceMonitorService,
-            PlayitAgentService playitAgentService,
-            PlayitApiClient playitApiClient,
             TunnelService tunnelService,
+            InstanceTunnelOrchestrator tunnelOrchestrator,
             IDialogService dialogService,
             IAppNavigationService navigationService,
             IAppDispatcher dispatcher,
@@ -70,9 +65,8 @@ namespace PocketMC.Desktop.ViewModels
             _serverConfigurationService = serverConfigurationService;
             _serverProcessManager = serverProcessManager;
             _resourceMonitorService = resourceMonitorService;
-            _playitAgentService = playitAgentService;
-            _playitApiClient = playitApiClient;
             _tunnelService = tunnelService;
+            _tunnelOrchestrator = tunnelOrchestrator;
             _dialogService = dialogService;
             _navigationService = navigationService;
             _dispatcher = dispatcher;
@@ -108,10 +102,7 @@ namespace PocketMC.Desktop.ViewModels
 
         public void Deactivate()
         {
-            if (!_isActive)
-            {
-                return;
-            }
+            if (!_isActive) return;
 
             _instanceManager.InstancesChanged -= OnInstancesChanged;
             _serverProcessManager.OnInstanceStateChanged -= OnInstanceStateChanged;
@@ -129,12 +120,17 @@ namespace PocketMC.Desktop.ViewModels
         {
             _dispatcher.Invoke(() =>
             {
-                if (!_instanceLookup.TryGetValue(instanceId, out var vm))
-                {
-                    return;
-                }
+                var vm = Instances.FirstOrDefault(i => i.Id == instanceId);
+                if (vm == null) return;
 
                 vm.UpdateState(state);
+                
+                if (state == ServerState.Stopped || state == ServerState.Crashed)
+                {
+                    _applicationState.ClearTunnelAddress(instanceId);
+                    vm.TunnelAddress = null;
+                }
+
                 ApplyLiveMetrics(vm);
             });
         }
@@ -143,7 +139,8 @@ namespace PocketMC.Desktop.ViewModels
         {
             _dispatcher.Invoke(() =>
             {
-                if (_instanceLookup.TryGetValue(instanceId, out var vm))
+                var vm = Instances.FirstOrDefault(i => i.Id == instanceId);
+                if (vm != null)
                 {
                     vm.UpdateCountdown(secondsRemaining);
                     ApplyLiveMetrics(vm);
@@ -173,7 +170,6 @@ namespace PocketMC.Desktop.ViewModels
 
             var existingVms = Instances.ToList();
             Instances.Clear();
-            _instanceLookup.Clear();
             var metas = _instanceManager.GetAllInstances();
             foreach (var meta in metas)
             {
@@ -192,14 +188,12 @@ namespace PocketMC.Desktop.ViewModels
 
             foreach (var vm in Instances)
             {
-                _instanceLookup[vm.Id] = vm;
                 var process = _serverProcessManager.GetProcess(vm.Id);
                 if (process != null)
                 {
                     vm.UpdateState(process.State);
                 }
 
-                // Populate MaxPlayers from server.properties
                 if (TryGetServerProperty(vm.Id, "max-players", out string? maxPlayerStr) &&
                     int.TryParse(maxPlayerStr, out int maxPlayers) && maxPlayers > 0)
                 {
@@ -208,11 +202,14 @@ namespace PocketMC.Desktop.ViewModels
 
                 ApplyLiveMetrics(vm);
 
-                // Pre-populate tunnel address from cache (no polling)
                 var cached = _applicationState.GetTunnelAddress(vm.Id);
                 if (!string.IsNullOrEmpty(cached))
                 {
                     vm.TunnelAddress = cached;
+                }
+                else if (vm.State == ServerState.Online)
+                {
+                    _ = _tunnelOrchestrator.EnsureTunnelFlowAsync(vm.Id, vm.Name, addr => vm.TunnelAddress = addr);
                 }
             }
         }
@@ -238,7 +235,6 @@ namespace PocketMC.Desktop.ViewModels
                 return;
             }
 
-            // No metrics — show placeholder only if server isn't running
             if (!vm.IsRunning)
             {
                 vm.CpuText = "\u00b7 \u00b7 \u00b7";
@@ -246,8 +242,6 @@ namespace PocketMC.Desktop.ViewModels
                 vm.PlayerStatus = "\u00b7 \u00b7 \u00b7";
             }
         }
-
-
 
         private async void StartServer(object? parameter)
         {
@@ -258,11 +252,45 @@ namespace PocketMC.Desktop.ViewModels
                     string? instancePath = _instanceManager.GetInstancePath(vm.Id);
                     if (instancePath == null) return;
 
+                    // RAM Availability Check
+                    var availableMb = MemoryHelper.GetAvailablePhysicalMemoryMb();
+                    var requiredMb = (ulong)vm.Metadata.MaxRamMb;
+                    if (availableMb < requiredMb + 512) // Reserve 512MB for OS
+                    {
+                        var result = await _dialogService.ShowDialogAsync("Low Memory", 
+                            $"Your system only has {availableMb}MB of available RAM. Starting this server ({requiredMb}MB) might cause significant lag or crashes.\n\n" +
+                            "Close other applications like Chrome or Spotify to free up memory.\n\nContinue anyway?", 
+                            DialogType.Warning, true);
+                        if (result != DialogResult.Yes) return;
+                    }
+
+                    // Port Collision Check
+                    int targetPort = _serverConfigurationService.GetActivePortForInstance(vm.Id);
+                    var otherRunningPaths = _serverProcessManager.ActiveProcesses
+                        .Where(kvp => kvp.Key != vm.Id)
+                        .Select(kvp => _instanceManager.GetInstancePath(kvp.Key))
+                        .Where(p => p != null)
+                        .ToList();
+
+                    foreach (var otherPath in otherRunningPaths)
+                    {
+                        if (_serverConfigurationService.TryGetProperty(otherPath!, "server-port", out string? otherPortStr) &&
+                            int.TryParse(otherPortStr, out int otherPort) &&
+                            otherPort == targetPort)
+                        {
+                            var result = await _dialogService.ShowDialogAsync("Port Collision",
+                                $"Another running server is already using port {targetPort}.\n\n" +
+                                "Change the port for this server in Settings -> Networking before starting, or stop the other server.",
+                                DialogType.Warning);
+                            return;
+                        }
+                    }
+
                     var process = await _serverProcessManager.StartProcessAsync(vm.Metadata, _applicationState.GetRequiredAppRootPath());
                     vm.UpdateState(process.State);
                     ApplyLiveMetrics(vm);
 
-                    _ = EnsureTunnelFlowForInstanceAsync(vm);
+                    _ = _tunnelOrchestrator.EnsureTunnelFlowAsync(vm.Id, vm.Name, addr => vm.TunnelAddress = addr);
                 }
                 catch (Exception ex)
                 {
@@ -274,184 +302,13 @@ namespace PocketMC.Desktop.ViewModels
             }
         }
 
-        private async Task EnsureTunnelFlowForInstanceAsync(InstanceCardViewModel vm)
-        {
-            if (!_applicationState.IsConfigured || !File.Exists(_applicationState.GetPlayitExecutablePath()))
-            {
-                return;
-            }
-
-            if (!TryBeginTunnelResolution(vm.Id))
-            {
-                return;
-            }
-
-            try
-            {
-                if (!TryGetServerPort(vm.Id, out int serverPort))
-                {
-                    _logger.LogDebug("Skipping tunnel resolution for {ServerName} because the server port could not be read.", vm.Name);
-                    return;
-                }
-
-                _dispatcher.Invoke(() => vm.TunnelAddress = null);
-                EnsurePlayitAgentRunning();
-
-                TunnelResolutionResult resolution = await ResolveTunnelWithWarmupAsync(serverPort);
-                switch (resolution.Status)
-                {
-                    case TunnelResolutionResult.TunnelStatus.Found:
-                        if (!string.IsNullOrWhiteSpace(resolution.PublicAddress))
-                        {
-                            _applicationState.SetTunnelAddress(vm.Id, resolution.PublicAddress!);
-                            _dispatcher.Invoke(() => vm.TunnelAddress = resolution.PublicAddress);
-                        }
-                        break;
-
-                    case TunnelResolutionResult.TunnelStatus.CreationStarted:
-                        _dispatcher.Invoke(() =>
-                        {
-                            var guidePage = ActivatorUtilities.CreateInstance<TunnelCreationGuidePage>(_serviceProvider, serverPort);
-                            guidePage.OnTunnelResolved += address =>
-                            {
-                                if (!string.IsNullOrWhiteSpace(address))
-                                {
-                                    _applicationState.SetTunnelAddress(vm.Id, address);
-                                }
-                                _dispatcher.Invoke(() => vm.TunnelAddress = address);
-                            };
-                            _navigationService.NavigateToDetailPage(
-                                guidePage,
-                                $"Tunnel Setup: {vm.Name}",
-                                DetailRouteKind.TunnelCreationGuide,
-                                DetailBackNavigation.Dashboard,
-                                clearDetailStack: true);
-                        });
-                        break;
-
-                    case TunnelResolutionResult.TunnelStatus.LimitReached:
-                        _dispatcher.Invoke(() =>
-                            _dialogService.ShowMessage(
-                                "Tunnel Limit Reached",
-                                "Your Playit account already has 4 tunnels. Delete one in Playit or change this server's port, then try again.",
-                                DialogType.Warning));
-                        break;
-
-                    case TunnelResolutionResult.TunnelStatus.AgentOffline:
-                        _logger.LogInformation("Playit agent is not ready yet for server {ServerName}.", vm.Name);
-                        break;
-
-                    case TunnelResolutionResult.TunnelStatus.Error:
-                        if (resolution.RequiresClaim)
-                        {
-                            _logger.LogInformation("Playit claim is still pending for server {ServerName}.", vm.Name);
-                        }
-                        else if (resolution.IsTokenInvalid)
-                        {
-                            _dispatcher.Invoke(() =>
-                                _dialogService.ShowMessage(
-                                    "Playit Reconnect Required",
-                                    "PocketMC detected that your Playit agent needs to be linked again. Open the Tunnel page and click Reconnect.",
-                                    DialogType.Warning));
-                        }
-                        else if (!string.IsNullOrWhiteSpace(resolution.ErrorMessage))
-                        {
-                            _logger.LogWarning("Playit tunnel resolution failed for {ServerName}: {Message}", vm.Name, resolution.ErrorMessage);
-                        }
-                        break;
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Failed to complete the Playit tunnel flow for {ServerName}.", vm.Name);
-            }
-            finally
-            {
-                EndTunnelResolution(vm.Id);
-            }
-        }
-
-        private async Task<TunnelResolutionResult> ResolveTunnelWithWarmupAsync(int serverPort)
-        {
-            TunnelResolutionResult? lastResult = null;
-
-            for (int attempt = 0; attempt < 4; attempt++)
-            {
-                lastResult = await _tunnelService.ResolveTunnelAsync(serverPort);
-                bool shouldRetry =
-                    attempt < 3 &&
-                    (lastResult.Status == TunnelResolutionResult.TunnelStatus.AgentOffline ||
-                     (lastResult.Status == TunnelResolutionResult.TunnelStatus.Error && lastResult.RequiresClaim));
-
-                if (!shouldRetry)
-                {
-                    return lastResult;
-                }
-
-                await Task.Delay(TimeSpan.FromSeconds(2));
-            }
-
-            return lastResult ?? new TunnelResolutionResult
-            {
-                Status = TunnelResolutionResult.TunnelStatus.Error,
-                ErrorMessage = "Tunnel resolution did not complete."
-            };
-        }
-
-        private void EnsurePlayitAgentRunning()
-        {
-            if (_playitAgentService.IsRunning)
-            {
-                return;
-            }
-
-            if (_playitAgentService.State is PlayitAgentState.WaitingForClaim or PlayitAgentState.Starting)
-            {
-                return;
-            }
-
-            _playitAgentService.Start();
-        }
-
-        private bool TryGetServerPort(Guid instanceId, out int serverPort)
-        {
-            serverPort = 0;
-            string? instancePath = _instanceManager.GetInstancePath(instanceId);
-            if (string.IsNullOrWhiteSpace(instancePath))
-            {
-                return false;
-            }
-
-            return _serverConfigurationService.TryGetProperty(instancePath, "server-port", out string? portString) &&
-                   int.TryParse(portString, out serverPort);
-        }
-
         private bool TryGetServerProperty(Guid instanceId, string key, out string? value)
         {
             value = null;
             string? instancePath = _instanceManager.GetInstancePath(instanceId);
             if (string.IsNullOrWhiteSpace(instancePath)) return false;
-
             return _serverConfigurationService.TryGetProperty(instancePath, key, out value);
         }
-
-        private bool TryBeginTunnelResolution(Guid instanceId)
-        {
-            lock (_tunnelResolutionLock)
-            {
-                return _tunnelResolutionsInFlight.Add(instanceId);
-            }
-        }
-
-        private void EndTunnelResolution(Guid instanceId)
-        {
-            lock (_tunnelResolutionLock)
-            {
-                _tunnelResolutionsInFlight.Remove(instanceId);
-            }
-        }
-
-
 
         private async void StopServer(object? parameter)
         {
@@ -467,10 +324,7 @@ namespace PocketMC.Desktop.ViewModels
                         return;
                     }
 
-                    if (_serverProcessManager.GetProcess(vm.Id) == null)
-                    {
-                        return;
-                    }
+                    if (_serverProcessManager.GetProcess(vm.Id) == null) return;
 
                     vm.UpdateState(ServerState.Stopping);
                     await _serverProcessManager.StopProcessAsync(vm.Id);
@@ -485,7 +339,6 @@ namespace PocketMC.Desktop.ViewModels
                 }
                 finally
                 {
-                    // Clear cached tunnel address on stop
                     _applicationState.ClearTunnelAddress(vm.Id);
                     vm.TunnelAddress = null;
                 }
@@ -529,12 +382,7 @@ namespace PocketMC.Desktop.ViewModels
                 string? path = _instanceManager.GetInstancePath(vm.Id);
                 if (path != null && Directory.Exists(path))
                 {
-                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-                    {
-                        FileName = path,
-                        UseShellExecute = true,
-                        Verb = "open"
-                    });
+                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo { FileName = path, UseShellExecute = true, Verb = "open" });
                 }
             }
         }
@@ -549,11 +397,7 @@ namespace PocketMC.Desktop.ViewModels
                 var crashReportsDir = Path.Combine(path, "crash-reports");
                 if (Directory.Exists(crashReportsDir))
                 {
-                    var latestReport = new DirectoryInfo(crashReportsDir)
-                        .GetFiles("*.txt")
-                        .OrderByDescending(f => f.LastWriteTime)
-                        .FirstOrDefault();
-
+                    var latestReport = new DirectoryInfo(crashReportsDir).GetFiles("*.txt").OrderByDescending(f => f.LastWriteTime).FirstOrDefault();
                     if (latestReport != null)
                     {
                         string content = File.ReadAllText(latestReport.FullName);
@@ -562,7 +406,6 @@ namespace PocketMC.Desktop.ViewModels
                         return;
                     }
                 }
-
                 _dialogService.ShowMessage("No Crash Reports", "No crash reports found for this server.", DialogType.Information);
             }
         }
@@ -573,12 +416,7 @@ namespace PocketMC.Desktop.ViewModels
             {
                 var settingsViewModel = ActivatorUtilities.CreateInstance<ServerSettingsViewModel>(_serviceProvider, vm.Metadata);
                 var settingsPage = ActivatorUtilities.CreateInstance<ServerSettingsPage>(_serviceProvider, settingsViewModel);
-                _navigationService.NavigateToDetailPage(
-                    settingsPage,
-                    $"Settings: {vm.Name}",
-                    DetailRouteKind.ServerSettings,
-                    DetailBackNavigation.Dashboard,
-                    clearDetailStack: true);
+                _navigationService.NavigateToDetailPage(settingsPage, $"Settings: {vm.Name}", DetailRouteKind.ServerSettings, DetailBackNavigation.Dashboard, clearDetailStack: true);
             }
         }
 
@@ -594,12 +432,7 @@ namespace PocketMC.Desktop.ViewModels
                 }
 
                 var consolePage = ActivatorUtilities.CreateInstance<ServerConsolePage>(_serviceProvider, vm.Metadata, process);
-                _navigationService.NavigateToDetailPage(
-                    consolePage,
-                    $"Console: {vm.Name}",
-                    DetailRouteKind.ServerConsole,
-                    DetailBackNavigation.Dashboard,
-                    clearDetailStack: true);
+                _navigationService.NavigateToDetailPage(consolePage, $"Console: {vm.Name}", DetailRouteKind.ServerConsole, DetailBackNavigation.Dashboard, clearDetailStack: true);
             }
         }
     }

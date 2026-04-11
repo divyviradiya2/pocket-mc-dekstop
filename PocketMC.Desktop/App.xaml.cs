@@ -51,12 +51,14 @@ public partial class App : Application
                 services.AddSingleton<WindowsToastNotificationService>();
                 services.AddSingleton<INotificationService>(provider => provider.GetRequiredService<WindowsToastNotificationService>());
                 services.AddSingleton<ServerProcessManager>();
+                services.AddSingleton<ServerLaunchConfigurator>();
                 services.AddSingleton<ResourceMonitorService>();
                 services.AddSingleton<BackupService>();
                 services.AddSingleton<BackupSchedulerService>();
                 services.AddSingleton<ShellStartupCoordinator>();
                 services.AddSingleton<PlayitApiClient>();
                 services.AddSingleton<PlayitAgentService>();
+                services.AddSingleton<InstanceTunnelOrchestrator>();
                 services.AddSingleton<InstanceManager>();
                 services.AddSingleton<ServerConfigurationService>();
                 services.AddSingleton<WorldManager>();
@@ -98,6 +100,7 @@ public partial class App : Application
                 services.AddTransient<RootDirectorySetupPage>();
                 services.AddTransient<PocketMC.Desktop.ViewModels.DashboardViewModel>();
                 services.AddTransient<PocketMC.Desktop.ViewModels.ServerSettingsViewModel>();
+                services.AddSingleton<PocketMC.Desktop.ViewModels.ShellViewModel>();
                 services.AddTransient<DashboardPage>();
                 services.AddTransient<NewInstancePage>();
                 services.AddTransient<PluginBrowserPage>();
@@ -111,7 +114,7 @@ public partial class App : Application
         await _host.StartAsync();
 
         var mainWindow = Services.GetRequiredService<MainWindow>();
-        if (Services.GetService<IAppNavigationService>() is AppNavigationService appNavigationService)
+        if (Services.GetService<IAppNavigationService>() is IAppNavigationService appNavigationService)
         {
             appNavigationService.Initialize(mainWindow);
         }

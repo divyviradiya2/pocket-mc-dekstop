@@ -10,17 +10,19 @@ using Microsoft.Win32;
 using PocketMC.Desktop.Core.Interfaces;
 using PocketMC.Desktop.Services;
 using PocketMC.Desktop.Views;
+using PocketMC.Desktop.ViewModels;
 using Wpf.Ui;
 using Wpf.Ui.Controls;
 
 namespace PocketMC.Desktop;
 
-public partial class MainWindow : FluentWindow, IStartupShellHost
+public partial class MainWindow : FluentWindow, IStartupShellHost, INavigationHost
 {
     private readonly IServiceProvider _serviceProvider;
     private readonly ApplicationState _applicationState;
     private readonly ResourceMonitorService _globalMonitor;
     private readonly ShellStartupCoordinator _startupCoordinator;
+    private readonly ShellViewModel _viewModel;
     private readonly ILogger<MainWindow> _logger;
     private Type _lastShellPageType = typeof(DashboardPage);
     private ITitleBarContextSource? _titleBarContextSource;
@@ -32,13 +34,17 @@ public partial class MainWindow : FluentWindow, IStartupShellHost
         ApplicationState applicationState,
         ResourceMonitorService globalMonitor,
         ShellStartupCoordinator startupCoordinator,
+        ShellViewModel viewModel,
         ILogger<MainWindow> logger)
     {
         _serviceProvider = serviceProvider;
         _applicationState = applicationState;
         _globalMonitor = globalMonitor;
         _startupCoordinator = startupCoordinator;
+        _viewModel = viewModel;
         _logger = logger;
+
+        DataContext = _viewModel;
 
         InitializeComponent();
 
@@ -94,22 +100,13 @@ public partial class MainWindow : FluentWindow, IStartupShellHost
             _ => null
         };
 
-        UpdateBreadcrumbLabel(label);
+        UpdateBreadcrumb(label);
     }
 
-    private void UpdateBreadcrumbLabel(string? label)
+    public void UpdateBreadcrumb(string? label)
     {
-        if (!string.IsNullOrEmpty(label))
-        {
-            BreadcrumbSeparator.Visibility = Visibility.Visible;
-            BreadcrumbCurrent.Text = label;
-            BreadcrumbCurrent.Visibility = Visibility.Visible;
-        }
-        else
-        {
-            BreadcrumbSeparator.Visibility = Visibility.Collapsed;
-            BreadcrumbCurrent.Visibility = Visibility.Collapsed;
-        }
+        _viewModel.BreadcrumbCurrentText = label;
+        _viewModel.IsBreadcrumbVisible = !string.IsNullOrEmpty(label);
     }
 
     private static bool IsShellPageType(Type? pageType) =>
@@ -119,10 +116,6 @@ public partial class MainWindow : FluentWindow, IStartupShellHost
         pageType == typeof(AboutPage) ||
         pageType == typeof(AppSettingsPage);
 
-    /// <summary>
-    /// Allows child pages to navigate within the NavigationView.
-    /// Called from pages that need to navigate to ServerSettings/Console.
-    /// </summary>
     public void NavigateToPage(Type pageType, object? dataContext = null)
     {
         NavigateToShellPage(pageType, dataContext);
@@ -169,7 +162,7 @@ public partial class MainWindow : FluentWindow, IStartupShellHost
         if (replaced)
         {
             AttachTitleBarContextSource(page as ITitleBarContextSource);
-            UpdateBreadcrumbLabel(breadcrumbLabel);
+            UpdateBreadcrumb(breadcrumbLabel);
         }
 
         return replaced;
@@ -229,7 +222,7 @@ public partial class MainWindow : FluentWindow, IStartupShellHost
         }
 
         args.Cancel = true;
-        if (_serviceProvider.GetService(typeof(PocketMC.Desktop.Core.Interfaces.IAppNavigationService)) is PocketMC.Desktop.Core.Interfaces.IAppNavigationService navigationService)
+        if (_serviceProvider.GetService(typeof(IAppNavigationService)) is IAppNavigationService navigationService)
         {
             navigationService.NavigateToShellPage(pageType!);
             return;
@@ -289,31 +282,11 @@ public partial class MainWindow : FluentWindow, IStartupShellHost
 
     private NavigationViewItem? GetShellNavigationItem(Type? pageType)
     {
-        if (pageType == typeof(DashboardPage))
-        {
-            return NavDashboard;
-        }
-
-        if (pageType == typeof(TunnelPage))
-        {
-            return NavTunnel;
-        }
-
-        if (pageType == typeof(JavaSetupPage))
-        {
-            return NavJavaSetup;
-        }
-
-        if (pageType == typeof(AboutPage))
-        {
-            return NavAbout;
-        }
-
-        if (pageType == typeof(AppSettingsPage))
-        {
-            return NavSettings;
-        }
-
+        if (pageType == typeof(DashboardPage)) return NavDashboard;
+        if (pageType == typeof(TunnelPage)) return NavTunnel;
+        if (pageType == typeof(JavaSetupPage)) return NavJavaSetup;
+        if (pageType == typeof(AboutPage)) return NavAbout;
+        if (pageType == typeof(AppSettingsPage)) return NavSettings;
         return null;
     }
 
@@ -393,31 +366,20 @@ public partial class MainWindow : FluentWindow, IStartupShellHost
             return;
         }
 
-        string? title = _titleBarContextSource.TitleBarContextTitle;
-        string? statusText = _titleBarContextSource.TitleBarContextStatusText;
-        Brush statusBrush = _titleBarContextSource.TitleBarContextStatusBrush
+        _viewModel.TitleBarTitle = _titleBarContextSource.TitleBarContextTitle;
+        _viewModel.TitleBarStatusText = _titleBarContextSource.TitleBarContextStatusText;
+        _viewModel.TitleBarStatusBrush = _titleBarContextSource.TitleBarContextStatusBrush
             ?? TryFindBrush("TextFillColorSecondaryBrush", Brushes.Silver);
 
-        bool hasTitle = !string.IsNullOrWhiteSpace(title);
-        bool hasStatus = !string.IsNullOrWhiteSpace(statusText);
-
-        TitleBarContextTitle.Text = title ?? string.Empty;
-        TitleBarContextTitle.Visibility = hasTitle ? Visibility.Visible : Visibility.Collapsed;
-        TitleBarContextStatus.Text = statusText ?? string.Empty;
-        TitleBarContextStatus.Foreground = statusBrush;
-        TitleBarContextStatus.Visibility = hasStatus ? Visibility.Visible : Visibility.Collapsed;
-        TitleBarContextSeparator.Visibility = hasTitle && hasStatus ? Visibility.Visible : Visibility.Collapsed;
-        TitleBarContextBorder.Visibility = hasTitle || hasStatus ? Visibility.Visible : Visibility.Collapsed;
+        _viewModel.IsTitleBarContextVisible = !string.IsNullOrWhiteSpace(_viewModel.TitleBarTitle) || 
+                                              !string.IsNullOrWhiteSpace(_viewModel.TitleBarStatusText);
     }
 
     private void ClearTitleBarContext()
     {
-        TitleBarContextTitle.Text = string.Empty;
-        TitleBarContextTitle.Visibility = Visibility.Collapsed;
-        TitleBarContextStatus.Text = string.Empty;
-        TitleBarContextStatus.Visibility = Visibility.Collapsed;
-        TitleBarContextSeparator.Visibility = Visibility.Collapsed;
-        TitleBarContextBorder.Visibility = Visibility.Collapsed;
+        _viewModel.TitleBarTitle = null;
+        _viewModel.TitleBarStatusText = null;
+        _viewModel.IsTitleBarContextVisible = false;
     }
 
     private bool CanNavigateToPage(Type? pageType)
@@ -432,42 +394,32 @@ public partial class MainWindow : FluentWindow, IStartupShellHost
 
     private static Type? GetRequestedPageType(object? page)
     {
-        if (page is Type pageType)
-        {
-            return pageType;
-        }
-
-        if (page is Page pageInstance)
-        {
-            return pageInstance.GetType();
-        }
-
+        if (page is Type pageType) return pageType;
+        if (page is Page pageInstance) return pageInstance.GetType();
         return page?.GetType();
     }
 
-    private void LockNavigationToRootSetup()
+    public void SetNavigationLocked(bool isLocked)
     {
-        _isNavigationLockedToRootSetup = true;
-        DetachTitleBarContextSource();
-        RootNavigation.IsPaneVisible = false;
-        RootNavigation.IsPaneToggleVisible = false;
-        RootNavigation.IsPaneOpen = false;
-        SetShellNavigationEnabled(false);
-        ClearNavigationSelection();
-        BreadcrumbHost.Visibility = Visibility.Collapsed;
-        GlobalHealthBorder.Visibility = Visibility.Collapsed;
-        UpdateBreadcrumbLabel(null);
-    }
+        _isNavigationLockedToRootSetup = isLocked;
+        _viewModel.IsNavigationLocked = isLocked;
 
-    private void UnlockNavigationAfterRootSetup()
-    {
-        _isNavigationLockedToRootSetup = false;
-        RootNavigation.IsPaneVisible = true;
-        RootNavigation.IsPaneToggleVisible = true;
-        SetShellNavigationEnabled(true);
-        BreadcrumbHost.Visibility = Visibility.Visible;
-        GlobalHealthBorder.Visibility = Visibility.Visible;
-        UpdateBreadcrumbLabel(null);
+        if (isLocked)
+        {
+            DetachTitleBarContextSource();
+            _viewModel.IsPaneVisible = false;
+            _viewModel.IsPaneToggleVisible = false;
+            SetShellNavigationEnabled(false);
+            ClearNavigationSelection();
+            UpdateBreadcrumb((Type?)null);
+        }
+        else
+        {
+            _viewModel.IsPaneVisible = true;
+            _viewModel.IsPaneToggleVisible = true;
+            SetShellNavigationEnabled(true);
+            UpdateBreadcrumb((Type?)null);
+        }
     }
 
     private void SetShellNavigationEnabled(bool isEnabled)
@@ -558,9 +510,8 @@ public partial class MainWindow : FluentWindow, IStartupShellHost
             try
             {
                 GlobalResourceSummary summary = _globalMonitor.CurrentSummary;
-                GlobalHealthTextBlock.Text = summary.DisplayText;
-
-                GlobalHealthTextBlock.Foreground = summary.IsHighUsage
+                _viewModel.GlobalHealthStatusText = summary.DisplayText;
+                _viewModel.GlobalHealthStatusBrush = summary.IsHighUsage
                     ? Brushes.Red
                     : TryFindBrush("TextFillColorSecondaryBrush", Brushes.Silver);
             }
@@ -605,7 +556,7 @@ public partial class MainWindow : FluentWindow, IStartupShellHost
 
     public void ShowRootDirectorySetup()
     {
-        LockNavigationToRootSetup();
+        SetNavigationLocked(true);
 
         var setupPage = ActivatorUtilities.CreateInstance<RootDirectorySetupPage>(_serviceProvider);
         setupPage.DirectorySelected += OnRootDirectorySelected;
@@ -619,11 +570,7 @@ public partial class MainWindow : FluentWindow, IStartupShellHost
 
     private void RootDirectorySetupPage_Unloaded(object sender, RoutedEventArgs e)
     {
-        if (sender is not RootDirectorySetupPage setupPage)
-        {
-            return;
-        }
-
+        if (sender is not RootDirectorySetupPage setupPage) return;
         setupPage.DirectorySelected -= OnRootDirectorySelected;
         setupPage.Unloaded -= RootDirectorySetupPage_Unloaded;
     }
@@ -641,7 +588,7 @@ public partial class MainWindow : FluentWindow, IStartupShellHost
 
     public void CompleteRootDirectorySetup()
     {
-        UnlockNavigationAfterRootSetup();
+        SetNavigationLocked(false);
     }
 
     public bool NavigateToTunnel()
@@ -654,13 +601,13 @@ public partial class MainWindow : FluentWindow, IStartupShellHost
         return Dispatcher.Invoke(() =>
         {
             var guidePage = ActivatorUtilities.CreateInstance<PlayitGuidePage>(_serviceProvider, claimUrl, navigateToDashboardOnCompletion);
-            if (_serviceProvider.GetService(typeof(PocketMC.Desktop.Core.Interfaces.IAppNavigationService)) is PocketMC.Desktop.Core.Interfaces.IAppNavigationService navigationService)
+            if (_serviceProvider.GetService(typeof(IAppNavigationService)) is IAppNavigationService navigationService)
             {
                 return navigationService.NavigateToDetailPage(
                     guidePage,
                     "Playit.gg Setup",
-                    PocketMC.Desktop.Core.Interfaces.DetailRouteKind.PlayitGuide,
-                    PocketMC.Desktop.Core.Interfaces.DetailBackNavigation.Tunnel,
+                    DetailRouteKind.PlayitGuide,
+                    DetailBackNavigation.Tunnel,
                     clearDetailStack: true);
             }
 
@@ -670,16 +617,11 @@ public partial class MainWindow : FluentWindow, IStartupShellHost
 
     public void ShowError(string title, string message)
     {
-        System.Windows.MessageBox.Show(
-            message,
-            title,
-            System.Windows.MessageBoxButton.OK,
-            System.Windows.MessageBoxImage.Error);
+        System.Windows.MessageBox.Show(message, title, System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
     }
 
     public void ShutdownApplication()
     {
         Application.Current.Shutdown();
     }
-
 }
