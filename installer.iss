@@ -27,7 +27,7 @@ Name: "{group}\PocketMC"; Filename: "{app}\PocketMC.Desktop.exe"
 Name: "{autodesktop}\PocketMC"; Filename: "{app}\PocketMC.Desktop.exe"; Tasks: desktopicon
 
 [Run]
-Filename: "{tmp}\windowsdesktop-runtime-win-x64.exe"; Parameters: "/install /passive /norestart"; Check: NeedsDotNet8; StatusMsg: "Installing .NET 8 Desktop Runtime..."; Flags: waituntilterminated skipifdoesntexist
+Filename: "{tmp}\windowsdesktop-runtime-win-x64.exe"; Parameters: "/install /quiet /norestart"; Check: NeedsDotNet8; StatusMsg: "Installing .NET 8 Desktop Runtime..."; Flags: waituntilterminated skipifdoesntexist runascurrentuser
 Filename: "{app}\PocketMC.Desktop.exe"; Description: "{cm:LaunchProgram,PocketMC}"; Flags: nowait postinstall skipifsilent
 
 [Code]
