@@ -56,12 +56,10 @@ namespace PocketMC.Desktop.Features.InstanceCreation
             _logger = logger;
 
             Loaded += OnLoaded;
-            SizeChanged += OnPageSizeChanged;
         }
 
         private async void OnLoaded(object sender, RoutedEventArgs e)
         {
-            UpdateResponsiveLayout();
 
             if (_hasLoadedInitialVersions)
             {
@@ -74,10 +72,7 @@ namespace PocketMC.Desktop.Features.InstanceCreation
             await LoadVersionsAsync(GetSelectedServerType());
         }
 
-        private void OnPageSizeChanged(object sender, SizeChangedEventArgs e)
-        {
-            UpdateResponsiveLayout();
-        }
+
 
         private async void CmbServerType_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
@@ -407,40 +402,7 @@ namespace PocketMC.Desktop.Features.InstanceCreation
             }
         }
 
-        private void UpdateResponsiveLayout()
-        {
-            if (ContentLayoutRoot == null || FormColumnDefinition == null || GapColumnDefinition == null || SideColumnDefinition == null)
-            {
-                return;
-            }
 
-            bool useStackedLayout = ActualWidth < 760;
-
-            if (useStackedLayout)
-            {
-                FormColumnDefinition.Width = new GridLength(1, GridUnitType.Star);
-                GapColumnDefinition.Width = new GridLength(0);
-                SideColumnDefinition.Width = new GridLength(0);
-
-                Grid.SetRow(FormCard, 0);
-                Grid.SetColumn(FormCard, 0);
-                Grid.SetRow(ComplianceCard, 1);
-                Grid.SetColumn(ComplianceCard, 0);
-                ComplianceCard.Margin = new Thickness(0, 16, 0, 0);
-            }
-            else
-            {
-                FormColumnDefinition.Width = new GridLength(1, GridUnitType.Star);
-                GapColumnDefinition.Width = new GridLength(20);
-                SideColumnDefinition.Width = new GridLength(268);
-
-                Grid.SetRow(FormCard, 0);
-                Grid.SetColumn(FormCard, 0);
-                Grid.SetRow(ComplianceCard, 0);
-                Grid.SetColumn(ComplianceCard, 2);
-                ComplianceCard.Margin = new Thickness(0);
-            }
-        }
 
         private static string FormatMegabytes(long bytes)
         {

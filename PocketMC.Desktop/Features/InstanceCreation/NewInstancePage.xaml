@@ -43,9 +43,7 @@
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
             <Grid.ColumnDefinitions>
-                <ColumnDefinition x:Name="FormColumnDefinition" Width="*"/>
-                <ColumnDefinition x:Name="GapColumnDefinition" Width="20"/>
-                <ColumnDefinition x:Name="SideColumnDefinition" Width="268"/>
+                <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
 
             <ui:Card x:Name="FormCard"
@@ -124,15 +122,9 @@
                                FontSize="12"
                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                TextWrapping="Wrap"/>
-                </StackPanel>
-            </ui:Card>
 
-            <ui:Card x:Name="ComplianceCard"
-                     Grid.Row="0"
-                     Grid.Column="2"
-                     Padding="20"
-                     VerticalAlignment="Top">
-                <StackPanel>
+                    <Border Height="1" Background="{DynamicResource CardStrokeColorDefaultBrush}" Margin="0,20,0,20"/>
+
                     <TextBlock Text="Compliance"
                                FontSize="12"
                                FontWeight="SemiBold"
@@ -140,12 +132,12 @@
                                Margin="0,0,0,16"/>
 
                     <CheckBox x:Name="ChkAcceptEula"
-                              Margin="0,0,0,12"
-                              Checked="ChkAcceptEula_Changed"
-                              Unchecked="ChkAcceptEula_Changed">
+                               Margin="0,0,0,12"
+                               Checked="ChkAcceptEula_Changed"
+                               Unchecked="ChkAcceptEula_Changed">
                         <TextBlock Text="I accept the Minecraft End User License Agreement"
-                                   TextWrapping="Wrap"
-                                   FontSize="13"/>
+                                    TextWrapping="Wrap"
+                                    FontSize="13"/>
                     </CheckBox>
 
                     <TextBlock FontSize="12"
@@ -153,7 +145,7 @@
                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                TextWrapping="Wrap"
                                Margin="24,0,0,0">
-                        <Run Text="PocketMC will write eula.txt automatically after the server jar finishes downloading. Review "/>
+                        <Run Text="PocketMC will write eula.txt automatically. Review "/>
                         <Hyperlink NavigateUri="https://aka.ms/MinecraftEULA"
                                    RequestNavigate="MinecraftEulaLink_RequestNavigate">Mojang's EULA</Hyperlink>
                         <Run Text=" before creating the instance."/>

@@ -50,27 +50,7 @@
                             </Grid.ColumnDefinitions>
 
                             <!-- Breadcrumb trail -->
-                            <StackPanel x:Name="BreadcrumbHost"
-                                        Grid.Column="0" Orientation="Horizontal"
-                                        VerticalAlignment="Center" Margin="8,0,16,0"
-                                        Visibility="{Binding BreadcrumbVisibility}">
-                                <TextBlock x:Name="BreadcrumbRoot"
-                                           Text="PocketMC"
-                                           FontSize="12"
-                                           Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                           VerticalAlignment="Center"/>
-                                <TextBlock x:Name="BreadcrumbSeparator"
-                                           Text="  ›  "
-                                           FontSize="12"
-                                           Foreground="{DynamicResource TextFillColorDisabledBrush}"
-                                           VerticalAlignment="Center"/>
-                                <TextBlock x:Name="BreadcrumbCurrent"
-                                           Text="{Binding BreadcrumbCurrentText}"
-                                           FontSize="12"
-                                           FontWeight="SemiBold"
-                                           Foreground="{DynamicResource TextFillColorPrimaryBrush}"
-                                           VerticalAlignment="Center"/>
-                            </StackPanel>
+
 
                             <!-- Context for detail pages like Console -->
                             <Border x:Name="TitleBarContextBorder"
@@ -132,14 +112,15 @@
                                        Content="Tunnel"
                                        Icon="{ui:SymbolIcon Globe24}"
                                        TargetPageType="{x:Type tunnel:TunnelPage}"/>
-                <ui:NavigationViewItem x:Name="NavJavaSetup"
-                                       Content="Java Setup"
-                                       Icon="{ui:SymbolIcon ArrowDownload24}"
-                                       TargetPageType="{x:Type setup:JavaSetupPage}"/>
+
             </ui:NavigationView.MenuItems>
 
             <!-- ─── Footer ─── -->
             <ui:NavigationView.FooterMenuItems>
+                <ui:NavigationViewItem x:Name="NavJavaSetup"
+                                       Content="Java Setup"
+                                       Icon="{ui:SymbolIcon ArrowDownload24}"
+                                       TargetPageType="{x:Type setup:JavaSetupPage}"/>
                 <ui:NavigationViewItem x:Name="NavSettings"
                                        Content="Settings"
                                        Icon="{ui:SymbolIcon Settings24}"

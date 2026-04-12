@@ -46,6 +46,11 @@
                                     </Style>
                                 </Border.Style>
                                 <ui:Card Cursor="Hand" Padding="0" VerticalAlignment="Stretch" HorizontalAlignment="Stretch">
+                                    <ui:Card.InputBindings>
+                                        <MouseBinding MouseAction="LeftClick" 
+                                                      Command="{Binding DataContext.OpenConsoleCommand, RelativeSource={RelativeSource AncestorType=Page}}" 
+                                                      CommandParameter="{Binding}"/>
+                                    </ui:Card.InputBindings>
                                     <Grid Margin="16">
                                         <Grid.RowDefinitions>
                                             <RowDefinition Height="Auto"/> <!-- Row 0: Title & Menu -->
@@ -90,8 +95,8 @@
                                 
                                 <!-- Description (Row 1) -->
                                 <ui:TextBlock Grid.Row="1" FontTypography="Caption" Text="{Binding Description}" 
-                                              Foreground="Silver" Height="34"
-                                              TextWrapping="Wrap" Margin="0,0,0,8" TextTrimming="CharacterEllipsis"/>
+                                               Foreground="Silver" MinHeight="0"
+                                               TextWrapping="Wrap" Margin="0,0,0,8" TextTrimming="CharacterEllipsis"/>
                                               
                                 <!-- Status (Row 2) -->
                                 <TextBlock Grid.Row="2" Text="{Binding StatusText}" 
@@ -151,8 +156,8 @@
                                     <!-- Players -->
                                     <StackPanel Grid.Column="4" HorizontalAlignment="Center">
                                         <TextBlock Text="Players" FontSize="10" Foreground="#88FFFFFF" HorizontalAlignment="Center"/>
-                                        <TextBlock Text="{Binding PlayerStatus}" FontSize="13" FontWeight="SemiBold"
-                                                   Foreground="White" HorizontalAlignment="Center"/>
+                                        <TextBlock Text="{Binding PlayerStatus}" FontSize="13" FontWeight="SemiBold" Opacity="0.9"
+                                                    Foreground="White" HorizontalAlignment="Center"/>
                                     </StackPanel>
                                 </Grid>
 
@@ -187,10 +192,9 @@
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
                 </ItemsControl>
-                <TextBlock x:Name="TxtEmpty" Text="No servers yet. Click 'New Instance' to get started." 
-                           Foreground="Silver" HorizontalAlignment="Left" Margin="40" FontSize="14">
-                    <TextBlock.Style>
-                        <Style TargetType="TextBlock">
+                <StackPanel x:Name="TxtEmpty" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="60">
+                    <StackPanel.Style>
+                        <Style TargetType="StackPanel">
                             <Setter Property="Visibility" Value="Collapsed"/>
                             <Style.Triggers>
                                 <DataTrigger Binding="{Binding Instances.Count}" Value="0">
@@ -198,8 +202,20 @@
                                 </DataTrigger>
                             </Style.Triggers>
                         </Style>
-                    </TextBlock.Style>
-                </TextBlock>
+                    </StackPanel.Style>
+                    <ui:SymbolIcon Symbol="ServerPlay20" FontSize="48" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,0,16"/>
+                    <TextBlock Text="No servers detected" 
+                               FontWeight="SemiBold"
+                               FontSize="18"
+                               Foreground="White"
+                               HorizontalAlignment="Center"/>
+                    <TextBlock Text="Click 'New Instance' above to create your first Minecraft environment." 
+                               Foreground="Silver" 
+                               Margin="0,8,0,0"
+                               HorizontalAlignment="Center"
+                               TextWrapping="Wrap"
+                               TextAlignment="Center"/>
+                </StackPanel>
             </StackPanel>
         </ScrollViewer>
     </Grid>
