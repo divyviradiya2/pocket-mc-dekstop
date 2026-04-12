@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Threading.Tasks;
 using System.Windows.Input;
@@ -66,6 +67,7 @@ namespace PocketMC.Desktop.Features.Settings
         
         public ICommand UploadWorldCommand { get; }
         public ICommand DeleteWorldCommand { get; }
+        public ICommand BrowseMapsCommand { get; }
 
         public SettingsWorldVM(
             string serverDir,
@@ -84,6 +86,7 @@ namespace PocketMC.Desktop.Features.Settings
 
             UploadWorldCommand = new RelayCommand(async _ => await UploadWorldAsync(), _ => !_isRunningCheck());
             DeleteWorldCommand = new RelayCommand(async _ => await DeleteWorldAsync(), _ => !_isRunningCheck());
+            BrowseMapsCommand = new RelayCommand(_ => OpenMapsWebsite());
         }
 
         public void LoadWorldState()
@@ -124,6 +127,19 @@ namespace PocketMC.Desktop.Features.Settings
                 try { await PocketMC.Desktop.Utils.FileUtils.CleanDirectoryAsync(worldDir); LoadWorldState(); }
                 catch (Exception ex) { _dialogService.ShowMessage("Error", ex.Message, DialogType.Error); }
             }
+        }
+
+        private void OpenMapsWebsite()
+        {
+            try
+            {
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = "https://www.minecraftmaps.com/search",
+                    UseShellExecute = true
+                });
+            }
+            catch { /* Browser launch failed silently */ }
         }
     }
 }
