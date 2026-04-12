@@ -1,6 +1,5 @@
 <div align="center">
 
-<!-- Replace with your actual logo -->
 <img src="docs/assets/logo.png" alt="PocketMC Logo" width="200" />
 
 **A professional Minecraft Java Edition server manager for Windows.**  
