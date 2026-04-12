@@ -45,10 +45,22 @@ public static class JavaRuntimeResolver
         return 25;
     }
 
+    public static string GetExpectedBundledJavaPath(string appRootPath, int javaVersion)
+    {
+        return Path.Combine(appRootPath, "runtime", $"java{javaVersion}", "bin", "java.exe");
+    }
+
     public static string? GetBundledJavaPath(string appRootPath, int javaVersion)
     {
-        string bundledPath = Path.Combine(appRootPath, "runtime", $"java{javaVersion}", "bin", "java.exe");
+        string bundledPath = GetExpectedBundledJavaPath(appRootPath, javaVersion);
         return File.Exists(bundledPath) ? bundledPath : null;
+    }
+
+    public static bool IsBundledJavaPath(string path, int javaVersion, string appRootPath)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return false;
+        string expected = GetExpectedBundledJavaPath(appRootPath, javaVersion);
+        return string.Equals(path, expected, StringComparison.OrdinalIgnoreCase);
     }
 
     public static string ResolveJavaPath(InstanceMetadata metadata, string appRootPath)

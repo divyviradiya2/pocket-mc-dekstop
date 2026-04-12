@@ -25,6 +25,7 @@ namespace PocketMC.Desktop.Features.Settings
         private readonly IDialogService _dialogService;
         private readonly IAppNavigationService _navigationService;
         private readonly Action<Guid, ServerState> _instanceStateChangedHandler;
+        private readonly string _appRootPath;
 
         public InstanceMetadata Metadata { get; }
         public string ServerDir { get; }
@@ -82,6 +83,7 @@ namespace PocketMC.Desktop.Features.Settings
             _lifecycleService = lifecycleService;
             _dialogService = dialogService;
             _navigationService = navigationService;
+            _appRootPath = ((ApplicationState)serviceProvider.GetService(typeof(ApplicationState))!).GetRequiredAppRootPath();
             ServerDir = _registry.GetPath(metadata.Id) ?? throw new InvalidOperationException();
 
             _instanceStateChangedHandler = (id, state) => { if (id == Metadata.Id) dispatcher.Invoke(UpdateRunningState); };
@@ -149,6 +151,13 @@ namespace PocketMC.Desktop.Features.Settings
             _ = ResolveTunnelAddressAsync(playitApiClient);
 
             IsLoading = false;
+            string? initialJavaPath = cfg.CustomJavaPath;
+            if (string.IsNullOrWhiteSpace(initialJavaPath))
+            {
+                int requiredVersion = PocketMC.Desktop.Features.Java.JavaRuntimeResolver.GetRequiredJavaVersion(Metadata.MinecraftVersion);
+                initialJavaPath = PocketMC.Desktop.Features.Java.JavaRuntimeResolver.GetExpectedBundledJavaPath(_appRootPath, requiredVersion);
+            }
+            Performance.JavaPath = initialJavaPath;
             HasUnsavedChanges = false;
         }
 
@@ -184,10 +193,17 @@ namespace PocketMC.Desktop.Features.Settings
 
         private void SaveConfigurations()
         {
+            string? customJavaPathToSave = Performance.JavaPath;
+            if (string.IsNullOrWhiteSpace(customJavaPathToSave))
+            {
+                int requiredVersion = PocketMC.Desktop.Features.Java.JavaRuntimeResolver.GetRequiredJavaVersion(Metadata.MinecraftVersion);
+                customJavaPathToSave = PocketMC.Desktop.Features.Java.JavaRuntimeResolver.GetExpectedBundledJavaPath(_appRootPath, requiredVersion);
+            }
+
             var cfg = new ServerConfiguration
             {
                 MinRamMb = (int)Performance.MinRam, MaxRamMb = (int)Performance.MaxRam,
-                CustomJavaPath = Performance.JavaPath, AdvancedJvmArgs = Performance.AdvancedJvmArgs,
+                CustomJavaPath = customJavaPathToSave, AdvancedJvmArgs = Performance.AdvancedJvmArgs,
                 EnableAutoRestart = Advanced.EnableAutoRestart,
                 MaxAutoRestarts = int.TryParse(Advanced.MaxAutoRestarts, out int mr) ? mr : Metadata.MaxAutoRestarts,
                 AutoRestartDelaySeconds = int.TryParse(Advanced.AutoRestartDelay, out int rd) ? rd : Metadata.AutoRestartDelaySeconds,

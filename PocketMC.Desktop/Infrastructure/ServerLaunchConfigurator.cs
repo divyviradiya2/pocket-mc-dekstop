@@ -72,7 +72,12 @@ namespace PocketMC.Desktop.Infrastructure
         private async Task<string> EnsureAndResolveJavaPathAsync(InstanceMetadata meta, int requiredVersion, string appRootPath, Action<string> onLog)
         {
             // Architecture: Ensure required Java runtime is present and healthy (Auto-Repair)
-            if (string.IsNullOrWhiteSpace(meta.CustomJavaPath))
+            bool expectsBundled = string.IsNullOrWhiteSpace(meta.CustomJavaPath) || 
+                                  JavaRuntimeResolver.IsBundledJavaPath(meta.CustomJavaPath, requiredVersion, appRootPath);
+
+            bool missingCustom = !string.IsNullOrWhiteSpace(meta.CustomJavaPath) && !File.Exists(meta.CustomJavaPath);
+
+            if (expectsBundled || missingCustom)
             {
                 if (!_javaProvisioning.IsJavaVersionPresent(requiredVersion))
                 {
