@@ -52,6 +52,9 @@ namespace PocketMC.Desktop.Features.Instances
 
             string newInstancePath = _pathService.GetInstancePath(slug);
             Directory.CreateDirectory(newInstancePath);
+            
+            // Apply default server icon
+            ApplyDefaultServerIcon(newInstancePath);
 
             var metadata = new InstanceMetadata
             {
@@ -65,6 +68,28 @@ namespace PocketMC.Desktop.Features.Instances
 
             SaveMetadata(metadata, newInstancePath);
             return metadata;
+        }
+
+        private void ApplyDefaultServerIcon(string instancePath)
+        {
+            try
+            {
+                // Access the logo from embedded resources
+                var uri = new Uri("pack://application:,,,/Assets/logo.png");
+                var resourceStream = System.Windows.Application.GetResourceStream(uri);
+                if (resourceStream != null)
+                {
+                    using (var stream = resourceStream.Stream)
+                    using (var fileStream = File.Create(Path.Combine(instancePath, "server-icon.png")))
+                    {
+                        stream.CopyTo(fileStream);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to apply default server icon to new instance at {InstancePath}.", instancePath);
+            }
         }
 
         public void UpdateMetadata(string folderName, string newName, string newDescription)

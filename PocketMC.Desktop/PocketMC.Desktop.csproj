@@ -16,6 +16,7 @@
   <ItemGroup>
     <Resource Include="icon.ico" />
     <Resource Include="Assets\dark_dirt.png" />
+    <Resource Include="Assets\logo.png" />
   </ItemGroup>
 
   <ItemGroup>
