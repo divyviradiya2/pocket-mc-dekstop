@@ -2,7 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Windows;
-using PocketMC.Desktop.Services;
+using PocketMC.Desktop.Features.Shell;
+using PocketMC.Desktop.Features.Instances;
+using PocketMC.Desktop.Features.Dashboard;
 
 namespace PocketMC.Desktop.Features.Tunnel
 {

@@ -13,7 +13,7 @@ using PocketMC.Desktop.Infrastructure.FileSystem;
 using PocketMC.Desktop.Features.Settings;
 using PocketMC.Desktop.Core.Presentation;
 
-namespace PocketMC.Desktop.Services
+namespace PocketMC.Desktop.Features.Instances
 {
     public class DownloaderService
     {

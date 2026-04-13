@@ -19,7 +19,7 @@ using PocketMC.Desktop.Core.Presentation;
 using PocketMC.Desktop.Core.Interfaces;
 using PocketMC.Desktop.Features.Instances;
 
-namespace PocketMC.Desktop.Services
+namespace PocketMC.Desktop.Features.Dashboard
 {
     public sealed class GlobalResourceSummary
     {

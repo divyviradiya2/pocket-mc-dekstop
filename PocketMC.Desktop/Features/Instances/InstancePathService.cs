@@ -1,6 +1,8 @@
 using System;
 using System.IO;
-using PocketMC.Desktop.Services;
+using PocketMC.Desktop.Features.Shell;
+using PocketMC.Desktop.Features.Instances;
+using PocketMC.Desktop.Features.Dashboard;
 
 namespace PocketMC.Desktop.Features.Instances
 {

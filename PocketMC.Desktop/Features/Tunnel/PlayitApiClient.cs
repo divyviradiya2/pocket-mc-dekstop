@@ -8,7 +8,9 @@ using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using PocketMC.Desktop.Models;
-using PocketMC.Desktop.Services;
+using PocketMC.Desktop.Features.Shell;
+using PocketMC.Desktop.Features.Instances;
+using PocketMC.Desktop.Features.Dashboard;
 using PocketMC.Desktop.Features.Settings;
 
 namespace PocketMC.Desktop.Features.Tunnel

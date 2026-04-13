@@ -1,7 +1,7 @@
 using System.IO;
 using PocketMC.Desktop.Models;
 
-namespace PocketMC.Desktop.Services;
+namespace PocketMC.Desktop.Features.Shell;
 
 public class ApplicationState
 {

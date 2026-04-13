@@ -4,7 +4,9 @@ using System.Net.Http;
 using System.Net.Http.Json;
 using System.Text.Json.Nodes;
 using System.Threading.Tasks;
-using PocketMC.Desktop.Services;
+using PocketMC.Desktop.Features.Shell;
+using PocketMC.Desktop.Features.Instances;
+using PocketMC.Desktop.Features.Dashboard;
 
 namespace PocketMC.Desktop.Features.Marketplace
 {

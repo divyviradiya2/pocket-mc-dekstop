@@ -3,7 +3,9 @@ using System.Threading;
 using System.Timers;
 using Microsoft.Extensions.Logging;
 using PocketMC.Desktop.Models;
-using PocketMC.Desktop.Services;
+using PocketMC.Desktop.Features.Shell;
+using PocketMC.Desktop.Features.Instances;
+using PocketMC.Desktop.Features.Dashboard;
 using PocketMC.Desktop.Features.Instances;
 
 namespace PocketMC.Desktop.Features.Instances.Backups;

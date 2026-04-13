@@ -15,7 +15,7 @@ public class ServerLifecycleService : IServerLifecycleService
     private readonly InstanceRegistry _registry;
     private readonly INotificationService _notificationService;
     private readonly ILogger<ServerLifecycleService> _logger;
-    private readonly PocketMC.Desktop.Services.ApplicationState _appState;
+    private readonly PocketMC.Desktop.Features.Shell.ApplicationState _appState;
     private string _appRootPath => _appState.GetRequiredAppRootPath();
 
     private readonly ConcurrentDictionary<Guid, int> _consecutiveRestarts = new();
@@ -30,7 +30,7 @@ public class ServerLifecycleService : IServerLifecycleService
         InstanceRegistry registry,
         INotificationService notificationService,
         ILogger<ServerLifecycleService> logger,
-        PocketMC.Desktop.Services.ApplicationState appState)
+        PocketMC.Desktop.Features.Shell.ApplicationState appState)
     {
         _processManager = processManager;
         _registry = registry;

@@ -3,7 +3,9 @@ using System.Windows;
 using System.Windows.Media;
 using Microsoft.Win32;
 using PocketMC.Desktop.Core.Interfaces;
-using PocketMC.Desktop.Services;
+using PocketMC.Desktop.Features.Shell;
+using PocketMC.Desktop.Features.Instances;
+using PocketMC.Desktop.Features.Dashboard;
 using PocketMC.Desktop.Infrastructure;
 using Wpf.Ui.Controls;
 

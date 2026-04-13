@@ -13,7 +13,9 @@ using PocketMC.Desktop.Features.Instances;
 using PocketMC.Desktop.Infrastructure.FileSystem;
 using PocketMC.Desktop.Features.Settings;
 using PocketMC.Desktop.Core.Presentation;
-using PocketMC.Desktop.Services;
+using PocketMC.Desktop.Features.Shell;
+using PocketMC.Desktop.Features.Instances;
+using PocketMC.Desktop.Features.Dashboard;
 using PocketMC.Desktop.Infrastructure;
 
 namespace PocketMC.Desktop.Features.Tunnel
