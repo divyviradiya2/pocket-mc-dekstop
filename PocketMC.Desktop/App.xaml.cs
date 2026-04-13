@@ -130,6 +130,7 @@ public partial class App : Application
                 services.AddTransient<DashboardViewModel>();
                 services.AddTransient<ServerSettingsViewModel>();
                 services.AddSingleton<ShellViewModel>();
+                services.AddSingleton<TrayIconViewModel>();
                 services.AddTransient<DashboardPage>();
                 services.AddTransient<NewInstancePage>();
                 services.AddTransient<PluginBrowserPage>();
