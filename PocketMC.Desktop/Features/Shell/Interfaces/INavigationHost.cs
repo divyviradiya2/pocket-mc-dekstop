@@ -1,7 +1,7 @@
 using System;
 using System.Windows.Controls;
 
-namespace PocketMC.Desktop.Core.Interfaces;
+namespace PocketMC.Desktop.Features.Shell.Interfaces;
 
 /// <summary>
 /// A host that can handle navigation requests from the application navigation service.

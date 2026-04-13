@@ -1,5 +1,6 @@
 using System;
 using System.Windows.Controls;
+using PocketMC.Desktop.Features.Shell.Interfaces;
 
 namespace PocketMC.Desktop.Core.Interfaces
 {

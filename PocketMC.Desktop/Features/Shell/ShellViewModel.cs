@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Media;
 using PocketMC.Desktop.Core.Interfaces;
+using PocketMC.Desktop.Features.Shell.Interfaces;
 using PocketMC.Desktop.Core.Mvvm;
 
 namespace PocketMC.Desktop.Features.Shell

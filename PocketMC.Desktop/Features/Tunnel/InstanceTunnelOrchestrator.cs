@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using PocketMC.Desktop.Core.Interfaces;
+using PocketMC.Desktop.Features.Shell.Interfaces;
 using PocketMC.Desktop.Models;
 using PocketMC.Desktop.Features.Shell;
 using PocketMC.Desktop.Features.Instances;

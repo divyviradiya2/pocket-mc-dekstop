@@ -7,6 +7,7 @@ using PocketMC.Desktop.Features.Shell;
 using PocketMC.Desktop.Features.Instances;
 using PocketMC.Desktop.Features.Dashboard;
 using PocketMC.Desktop.Core.Interfaces;
+using PocketMC.Desktop.Features.Shell.Interfaces;
 using PocketMC.Desktop.Infrastructure;
 using PocketMC.Desktop.Features.Shell;
 using PocketMC.Desktop.Features.Dashboard;

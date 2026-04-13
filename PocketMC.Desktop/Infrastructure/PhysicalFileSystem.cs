@@ -1,6 +1,7 @@
 using System.IO;
 using System.Threading.Tasks;
 using PocketMC.Desktop.Core.Interfaces;
+using PocketMC.Desktop.Features.Shell.Interfaces;
 using PocketMC.Desktop.Infrastructure.Security;
 using PocketMC.Desktop.Features.Instances.Backups;
 using PocketMC.Desktop.Features.Setup;

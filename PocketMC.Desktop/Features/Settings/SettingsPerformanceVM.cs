@@ -1,6 +1,7 @@
 using System;
 using System.Windows.Input;
 using PocketMC.Desktop.Core.Interfaces;
+using PocketMC.Desktop.Features.Shell.Interfaces;
 using PocketMC.Desktop.Core.Mvvm;
 using PocketMC.Desktop.Infrastructure.Security;
 using PocketMC.Desktop.Features.Instances.Backups;

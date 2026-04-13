@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using Microsoft.Extensions.Logging;
 using PocketMC.Desktop.Core.Interfaces;
+using PocketMC.Desktop.Features.Shell.Interfaces;
 using PocketMC.Desktop.Models;
 using PocketMC.Desktop.Features.Shell;
 using PocketMC.Desktop.Features.Instances;

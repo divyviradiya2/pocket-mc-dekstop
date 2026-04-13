@@ -12,6 +12,7 @@ using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
 using Wpf.Ui.Controls;
 using PocketMC.Desktop.Core.Interfaces;
+using PocketMC.Desktop.Features.Shell.Interfaces;
 using PocketMC.Desktop.Models;
 using PocketMC.Desktop.Features.Instances;
 

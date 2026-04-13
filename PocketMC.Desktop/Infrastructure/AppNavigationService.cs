@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Windows.Controls;
 using PocketMC.Desktop.Core.Interfaces;
+using PocketMC.Desktop.Features.Shell.Interfaces;
 using PocketMC.Desktop.Navigation;
 using PocketMC.Desktop.Features.Dashboard;
 using PocketMC.Desktop.Features.Tunnel;

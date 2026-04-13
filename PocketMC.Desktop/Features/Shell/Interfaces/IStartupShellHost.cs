@@ -1,4 +1,4 @@
-namespace PocketMC.Desktop.Core.Interfaces
+namespace PocketMC.Desktop.Features.Shell.Interfaces
 {
     public interface IStartupShellHost
     {

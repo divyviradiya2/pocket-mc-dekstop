@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using PocketMC.Desktop.Core.Interfaces;
+using PocketMC.Desktop.Features.Shell.Interfaces;
 using PocketMC.Desktop.Features.Shell;
 using PocketMC.Desktop.Features.Instances;
 using PocketMC.Desktop.Features.Dashboard;

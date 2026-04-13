@@ -17,6 +17,7 @@ using PocketMC.Desktop.Infrastructure.FileSystem;
 using PocketMC.Desktop.Features.Settings;
 using PocketMC.Desktop.Core.Presentation;
 using PocketMC.Desktop.Core.Interfaces;
+using PocketMC.Desktop.Features.Shell.Interfaces;
 using PocketMC.Desktop.Features.Instances;
 
 namespace PocketMC.Desktop.Features.Dashboard

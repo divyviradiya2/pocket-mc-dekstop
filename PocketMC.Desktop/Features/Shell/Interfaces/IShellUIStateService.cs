@@ -1,7 +1,7 @@
 using System;
 using System.Windows.Media;
 
-namespace PocketMC.Desktop.Core.Interfaces
+namespace PocketMC.Desktop.Features.Shell.Interfaces
 {
     /// <summary>
     /// Represents the global UI state for the application shell, including breadcrumbs and health status.

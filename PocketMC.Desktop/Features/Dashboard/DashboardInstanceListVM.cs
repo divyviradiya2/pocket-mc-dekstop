@@ -5,6 +5,7 @@ using PocketMC.Desktop.Core.Mvvm;
 using PocketMC.Desktop.Models;
 using PocketMC.Desktop.Features.Instances;
 using PocketMC.Desktop.Core.Interfaces;
+using PocketMC.Desktop.Features.Shell.Interfaces;
 using PocketMC.Desktop.Features.Shell;
 using PocketMC.Desktop.Features.Instances;
 using PocketMC.Desktop.Features.Dashboard;

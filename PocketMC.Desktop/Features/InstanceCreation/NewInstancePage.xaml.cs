@@ -9,6 +9,7 @@ using System.Windows.Controls;
 using System.Windows.Navigation;
 using Microsoft.Extensions.Logging;
 using PocketMC.Desktop.Core.Interfaces;
+using PocketMC.Desktop.Features.Shell.Interfaces;
 using PocketMC.Desktop.Models;
 using PocketMC.Desktop.Features.Shell;
 using PocketMC.Desktop.Features.Instances;

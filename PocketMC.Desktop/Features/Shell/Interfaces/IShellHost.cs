@@ -1,7 +1,7 @@
 using System;
 using System.Windows.Controls;
 
-namespace PocketMC.Desktop.Core.Interfaces
+namespace PocketMC.Desktop.Features.Shell.Interfaces
 {
     /// <summary>
     /// Defines the capabilities of the application shell as a host for content navigation.

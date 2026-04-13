@@ -6,6 +6,7 @@ using System.Windows.Media;
 using PocketMC.Desktop.Models;
 using PocketMC.Desktop.Features.Instances;
 using PocketMC.Desktop.Core.Interfaces;
+using PocketMC.Desktop.Features.Shell.Interfaces;
 
 namespace PocketMC.Desktop.Features.Dashboard;
 

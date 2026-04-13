@@ -7,6 +7,7 @@ using System.Reflection;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using PocketMC.Desktop.Core.Interfaces;
+using PocketMC.Desktop.Features.Shell.Interfaces;
 using PocketMC.Desktop.Features.Shell;
 using PocketMC.Desktop.Features.Dashboard;
 using PocketMC.Desktop.Features.Tunnel;
